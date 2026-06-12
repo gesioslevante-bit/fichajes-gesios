@@ -588,6 +588,11 @@ tbody tr:hover { background: var(--gris-fondo); }
 
 <script>
 // ════════════════════════════════════════
+// FECHA INICIO DEL SISTEMA
+// ════════════════════════════════════════
+const FECHA_INICIO_SISTEMA = new Date('2026-06-12T00:00:00');
+
+// ════════════════════════════════════════
 // CONFIGURACIÓN
 // ════════════════════════════════════════
 const CONFIG = {
@@ -787,7 +792,7 @@ async function cargarResumen() {
 
   // Fichajes de hoy para saber quién trabaja
   try {
-    const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0).toISOString();
+    const inicioDia = new Date(Math.max(new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0), FECHA_INICIO_SISTEMA)).toISOString();
     const finDia    = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59).toISOString();
     const dataHoy = await graphCall(
       `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=200` +
@@ -814,7 +819,8 @@ async function cargarResumen() {
 
   // Horas mes
   try {
-    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
+    const inicioMesRaw = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    const inicioMes = new Date(Math.max(inicioMesRaw, FECHA_INICIO_SISTEMA)).toISOString();
     const dataMes = await graphCall(
       `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=500&$filter=fields/Timestamp ge '${inicioMes}'`
     );
@@ -847,7 +853,8 @@ async function cargarActividadHoy() {
   document.getElementById('actividad-fecha').textContent =
     hoy.toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
 
-  const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0,0,0).toISOString();
+  const inicioDiaRaw = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0,0,0);
+  const inicioDia = new Date(Math.max(inicioDiaRaw, FECHA_INICIO_SISTEMA)).toISOString();
   const finDia    = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23,59,59).toISOString();
 
   try {
@@ -908,11 +915,12 @@ async function cargarHistorial() {
   let desde, hasta;
   if (mesFiltro) {
     const [y, m] = mesFiltro.split('-').map(Number);
-    desde = new Date(y, m-1, 1).toISOString();
+    const desdeCalc = new Date(y, m-1, 1);
+    desde = new Date(Math.max(desdeCalc, FECHA_INICIO_SISTEMA)).toISOString();
     hasta = new Date(y, m, 0, 23, 59, 59).toISOString();
   } else {
     const hoy = new Date();
-    desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString();
+    desde = FECHA_INICIO_SISTEMA.toISOString();
     hasta = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0, 23, 59, 59).toISOString();
   }
 
@@ -1199,14 +1207,15 @@ async function cargarControlHoras() {
   const anyo = parseInt(document.getElementById('horas-anyo').value);
   const mes = document.getElementById('horas-mes').value;
 
-  // Rango de fechas
+  // Rango de fechas — mínimo FECHA_INICIO_SISTEMA
   let desde, hasta;
   if (mes) {
     const m = parseInt(mes);
-    desde = new Date(anyo, m-1, 1);
+    const desdeCalc = new Date(anyo, m-1, 1);
+    desde = desdeCalc < FECHA_INICIO_SISTEMA ? FECHA_INICIO_SISTEMA : desdeCalc;
     hasta = new Date(anyo, m, 0, 23, 59, 59);
   } else {
-    desde = new Date(anyo, 0, 1);
+    desde = FECHA_INICIO_SISTEMA;
     hasta = new Date(anyo, 11, 31, 23, 59, 59);
   }
 
@@ -1234,8 +1243,8 @@ async function cargarControlHoras() {
       return count;
     }
 
-    // Días laborables del AÑO completo (para jornada diaria)
-    const diasAnyo = diasLaborables(new Date(anyo, 0, 1), new Date(anyo, 11, 31));
+    // Días laborables desde FECHA_INICIO hasta fin de año (para jornada diaria proporcional)
+    const diasAnyo = diasLaborables(FECHA_INICIO_SISTEMA, new Date(anyo, 11, 31));
     // Días laborables del PERÍODO seleccionado
     const diasPeriodo = diasLaborables(desde, hasta);
 
@@ -1273,9 +1282,10 @@ async function cargarControlHoras() {
     // Datos anuales para barra de extras (siempre año completo)
     const desde_anyo = new Date(anyo, 0, 1);
     const hasta_anyo = new Date(anyo, 11, 31, 23, 59, 59);
+    const desde_anyo_real = FECHA_INICIO_SISTEMA > desde_anyo ? FECHA_INICIO_SISTEMA : desde_anyo;
     let dataFichAnyo = dataFich;
     if (mes) {
-      dataFichAnyo = await graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=2000&$filter=fields/Timestamp ge '${desde_anyo.toISOString()}' and fields/Timestamp le '${hasta_anyo.toISOString()}'`);
+      dataFichAnyo = await graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=2000&$filter=fields/Timestamp ge '${desde_anyo_real.toISOString()}' and fields/Timestamp le '${hasta_anyo.toISOString()}'`);
     }
     const fichajesAnyo = dataFichAnyo.value || [];
     const porEmpAnyo = {};

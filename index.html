@@ -915,6 +915,8 @@
 // ══════════════════════════════════════════
 // CONFIGURACIÓN
 // ══════════════════════════════════════════
+const FECHA_INICIO_SISTEMA = new Date('2026-06-12T00:00:00');
+
 const CONFIG = {
   clientId: '33fe1962-33ad-41a8-b647-82e649491105',
   tenantId: 'dc0719cf-1b7a-426b-a68d-e1ac59ba08d7',
@@ -1048,7 +1050,8 @@ async function obtenerFichajesHoy() {
   const siteId = await obtenerSiteId();
   // Rango completo del día local para evitar desfase UTC vs España
   const ahora = new Date();
-  const inicioDia = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 0, 0, 0);
+  const inicioDiaRaw = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 0, 0, 0);
+  const inicioDia = new Date(Math.max(inicioDiaRaw, FECHA_INICIO_SISTEMA));
   const finDia    = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 23, 59, 59);
   const data = await graphCall(
     `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=50` +
@@ -1065,7 +1068,8 @@ async function obtenerFichajesHoy() {
 async function obtenerFichajesMes() {
   const siteId = await obtenerSiteId();
   const ahora = new Date();
-  const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1).toISOString();
+  const inicioMesRaw = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+  const inicioMes = new Date(Math.max(inicioMesRaw, FECHA_INICIO_SISTEMA)).toISOString();
   const data = await graphCall(
     `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=500` +
     `&$filter=fields/EmpleadoID eq '${estado.empleado.Title}'` +
