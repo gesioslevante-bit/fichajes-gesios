@@ -1085,7 +1085,8 @@ async function exportarITSS() {
     const empMap = {};
     empleados.forEach(e => { empMap[e.fields.Title] = e.fields; });
 
-    let csv = 'EMPRESA;CIF;EMPLEADO;NIF;FECHA;HORA_ENTRADA;HORA_SALIDA;HORAS_JORNADA\n';
+    let csv = 'EMPRESA;CIF;CONVENIO;EMPLEADO;NIF;FECHA;HORA_ENTRADA;HORA_SALIDA;HORAS_JORNADA\n';
+    const convenio = 'Convenio Estatal de Jardinería 2025-2030';
     const empresa = 'GESIOS DEL LEVANTE SL';
     const cif = 'B98765432'; // Actualiza con el CIF real
 
@@ -1110,7 +1111,7 @@ async function exportarITSS() {
         const diffMs = new Date(j.salidas[j.salidas.length-1]) - new Date(j.entradas[0]);
         horas = (diffMs / 3600000).toFixed(2);
       }
-      csv += `${empresa};${cif};${j.emp};${nif};${j.dia};${entrada};${salida};${horas}\n`;
+      csv += `${empresa};${cif};${convenio};${j.emp};${nif};${j.dia};${entrada};${salida};${horas}\n`;
     });
 
     descargarCSV(csv, `ITSS_${desde}_${hasta}${emp ? '_' + emp.replace(/ /g,'_') : ''}.csv`);
