@@ -288,6 +288,33 @@ tbody tr:hover { background: var(--gris-fondo); }
 
 /* ── VACIÓ ── */
 .vacio { text-align: center; padding: 40px; color: var(--gris-texto); font-size: 14px; }
+
+/* ── CONTROL HORAS ── */
+.horas-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+.horas-empleado-card {
+  background: var(--blanco);
+  border: 1px solid var(--gris-borde);
+  border-radius: 12px;
+  padding: 20px;
+}
+.horas-empleado-nombre { font-size: 15px; font-weight: 700; color: var(--azul); margin-bottom: 12px; }
+.horas-barra-wrap { margin-bottom: 8px; }
+.horas-barra-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--gris-texto); margin-bottom: 4px; }
+.horas-barra { height: 8px; background: var(--gris-borde); border-radius: 4px; overflow: hidden; }
+.horas-barra-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.horas-barra-fill.ordinaria { background: var(--azul); }
+.horas-barra-fill.extra { background: var(--naranja); }
+.horas-barra-fill.peligro { background: var(--rojo); }
+.horas-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.horas-stat { background: var(--gris-fondo); border-radius: 8px; padding: 8px 10px; }
+.horas-stat-val { font-size: 18px; font-weight: 700; color: var(--azul); }
+.horas-stat-val.naranja { color: var(--naranja); }
+.horas-stat-val.rojo { color: var(--rojo); }
+.horas-stat-val.verde { color: var(--verde); }
+.horas-stat-label { font-size: 11px; color: var(--gris-texto); margin-top: 2px; }
+.alerta-extras { background: var(--rojo-claro); border: 1px solid var(--rojo); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--rojo); font-weight: 600; margin-top: 10px; }
+.ok-extras { background: var(--verde-claro); border: 1px solid var(--verde); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--verde); font-weight: 600; margin-top: 10px; }
+
 .vacio .ico { font-size: 32px; margin-bottom: 8px; }
 
 /* ── ACTUALIZAR ── */
@@ -342,6 +369,9 @@ tbody tr:hover { background: var(--gris-fondo); }
       </div>
       <div class="nav-item" onclick="mostrarSeccion('empleados')">
         <span class="icono">👥</span> Empleados
+      </div>
+      <div class="nav-item" onclick="mostrarSeccion('horas')">
+        <span class="icono">⏱️</span> Control Horas
       </div>
     </div>
     <div class="sidebar-footer">
@@ -520,6 +550,33 @@ tbody tr:hover { background: var(--gris-fondo); }
             <tbody id="tabla-empleados"><tr><td colspan="4" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- ── CONTROL HORAS ── -->
+    <div id="sec-horas" class="seccion">
+      <div class="page-header">
+        <h2>Control de Horas</h2>
+        <p>Seguimiento de jornada ordinaria, horas extra y cómputo anual</p>
+      </div>
+      <div class="filtros">
+        <select id="horas-anyo" onchange="cargarControlHoras()">
+          <option value="2025">2025</option>
+          <option value="2026" selected>2026</option>
+        </select>
+        <select id="horas-mes" onchange="cargarControlHoras()">
+          <option value="">Todo el año</option>
+          <option value="1">Enero</option><option value="2">Febrero</option>
+          <option value="3">Marzo</option><option value="4">Abril</option>
+          <option value="5">Mayo</option><option value="6" selected>Junio</option>
+          <option value="7">Julio</option><option value="8">Agosto</option>
+          <option value="9">Septiembre</option><option value="10">Octubre</option>
+          <option value="11">Noviembre</option><option value="12">Diciembre</option>
+        </select>
+        <button class="btn btn-primario" onclick="cargarControlHoras()">🔍 Calcular</button>
+      </div>
+      <div id="horas-resultado">
+        <div class="cargando"><span class="spinner"></span> Cargando...</div>
       </div>
     </div>
 
@@ -1131,6 +1188,232 @@ function formatFecha(ts) {
   return new Date(ts).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', year:'numeric' });
 }
 
+
+// ════════════════════════════════════════
+// CONTROL DE HORAS
+// ════════════════════════════════════════
+async function cargarControlHoras() {
+  const div = document.getElementById('horas-resultado');
+  div.innerHTML = '<div class="cargando"><span class="spinner"></span> Calculando...</div>';
+
+  const anyo = parseInt(document.getElementById('horas-anyo').value);
+  const mes = document.getElementById('horas-mes').value;
+
+  // Rango de fechas
+  let desde, hasta;
+  if (mes) {
+    const m = parseInt(mes);
+    desde = new Date(anyo, m-1, 1);
+    hasta = new Date(anyo, m, 0, 23, 59, 59);
+  } else {
+    desde = new Date(anyo, 0, 1);
+    hasta = new Date(anyo, 11, 31, 23, 59, 59);
+  }
+
+  try {
+    // Cargar fichajes y empleados en paralelo
+    const [dataFich, dataEmp, dataAus] = await Promise.all([
+      graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=2000&$filter=fields/Timestamp ge '${desde.toISOString()}' and fields/Timestamp le '${hasta.toISOString()}'`),
+      graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`),
+      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA'`)
+    ]);
+
+    const fichajes = dataFich.value || [];
+    const empleados = dataEmp.value || [];
+    const ausencias = dataAus.value || [];
+
+    // Días laborables en el rango (lunes-viernes)
+    function diasLaborables(d1, d2) {
+      let count = 0;
+      const cur = new Date(d1);
+      while (cur <= d2) {
+        const dow = cur.getDay();
+        if (dow !== 0 && dow !== 6) count++;
+        cur.setDate(cur.getDate() + 1);
+      }
+      return count;
+    }
+
+    // Días laborables del AÑO completo (para jornada diaria)
+    const diasAnyo = diasLaborables(new Date(anyo, 0, 1), new Date(anyo, 11, 31));
+    // Días laborables del PERÍODO seleccionado
+    const diasPeriodo = diasLaborables(desde, hasta);
+
+    // Agrupar fichajes por empleado y día
+    const porEmp = {};
+    fichajes.forEach(f => {
+      const emp = f.fields.EmpleadoID;
+      const dia = f.fields.Timestamp.slice(0, 10);
+      if (!porEmp[emp]) porEmp[emp] = {};
+      if (!porEmp[emp][dia]) porEmp[emp][dia] = [];
+      porEmp[emp][dia].push(f.fields);
+    });
+
+    // Compensaciones aprobadas en el período
+    const compPorEmp = {};
+    ausencias.forEach(a => {
+      const f = a.fields;
+      if (f.TipoAusencia !== 'Compensación de horas') return;
+      const fi = new Date(f.FechaInicio);
+      const ff = new Date(f.FechaFin);
+      if (ff < desde || fi > hasta) return;
+      const emp = f.EmpleadoID;
+      if (!compPorEmp[emp]) compPorEmp[emp] = 0;
+      // Contar días laborables de la compensación en el período
+      const d1 = fi < desde ? desde : fi;
+      const d2 = ff > hasta ? hasta : ff;
+      compPorEmp[emp] += diasLaborables(d1, d2);
+    });
+
+    if (!empleados.length) {
+      div.innerHTML = '<div class="vacio">No hay empleados</div>';
+      return;
+    }
+
+    // Datos anuales para barra de extras (siempre año completo)
+    const desde_anyo = new Date(anyo, 0, 1);
+    const hasta_anyo = new Date(anyo, 11, 31, 23, 59, 59);
+    let dataFichAnyo = dataFich;
+    if (mes) {
+      dataFichAnyo = await graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=2000&$filter=fields/Timestamp ge '${desde_anyo.toISOString()}' and fields/Timestamp le '${hasta_anyo.toISOString()}'`);
+    }
+    const fichajesAnyo = dataFichAnyo.value || [];
+    const porEmpAnyo = {};
+    fichajesAnyo.forEach(f => {
+      const emp = f.fields.EmpleadoID;
+      const dia = f.fields.Timestamp.slice(0, 10);
+      if (!porEmpAnyo[emp]) porEmpAnyo[emp] = {};
+      if (!porEmpAnyo[emp][dia]) porEmpAnyo[emp][dia] = [];
+      porEmpAnyo[emp][dia].push(f.fields);
+    });
+
+    function calcularHorasEmp(registrosPorDia, jornadaDiaria) {
+      let horasOrdinarias = 0, horasExtra = 0;
+      const MARGEN_MIN = 15;
+
+      Object.values(registrosPorDia).forEach(registros => {
+        const sorted = registros.sort((a,b) => a.Timestamp.localeCompare(b.Timestamp));
+        let entrada = null;
+        let minutosJornada = 0;
+        sorted.forEach(r => {
+          if (r.TipoFichaje === 'ENTRADA') entrada = new Date(r.Timestamp);
+          else if (r.TipoFichaje === 'SALIDA' && entrada) {
+            minutosJornada += (new Date(r.Timestamp) - entrada) / 60000;
+            entrada = null;
+          }
+        });
+        const jornadaMin = jornadaDiaria * 60;
+        const margenMin = jornadaMin + MARGEN_MIN;
+        if (minutosJornada <= margenMin) {
+          horasOrdinarias += Math.min(minutosJornada, jornadaMin) / 60;
+        } else {
+          horasOrdinarias += jornadaDiaria;
+          horasExtra += (minutosJornada - margenMin) / 60;
+        }
+      });
+      return { horasOrdinarias, horasExtra };
+    }
+
+    let html = '<div class="horas-grid">';
+
+    empleados.forEach(e => {
+      const nombre = e.fields.Title;
+      const horasAnualesContrato = parseFloat(e.fields.HorasAnuales) || 1800;
+      const jornadaDiaria = horasAnualesContrato / diasAnyo;
+
+      // Cálculo período seleccionado
+      const { horasOrdinarias, horasExtra } = calcularHorasEmp(porEmp[nombre] || {}, jornadaDiaria);
+
+      // Cálculo año completo (para extras acumuladas y control anual)
+      const { horasOrdinarias: horasOrdAnyo, horasExtra: horasExtraAnyo } = calcularHorasEmp(porEmpAnyo[nombre] || {}, jornadaDiaria);
+
+      // Compensaciones en período
+      const diasComp = compPorEmp[nombre] || 0;
+      const horasComp = diasComp * jornadaDiaria;
+      const horasExtraNetas = Math.max(0, horasExtraAnyo - horasComp);
+
+      // Jornada esperada en el período
+      const jornadaEsperada = jornadaDiaria * diasPeriodo;
+
+      // Porcentajes para barras
+      const pctOrdinaria = Math.min(100, (horasOrdinarias / jornadaEsperada) * 100) || 0;
+      const pctExtra = Math.min(100, (horasExtraNetas / 80) * 100) || 0;
+      const pctAnual = Math.min(100, (horasOrdAnyo / horasAnualesContrato) * 100) || 0;
+
+      const alertaExtras = horasExtraNetas >= 72; // aviso al 90%
+      const alertaAnual = horasOrdAnyo >= horasAnualesContrato * 0.95;
+      const colorExtra = horasExtraNetas >= 80 ? 'rojo' : horasExtraNetas >= 60 ? 'naranja' : 'verde';
+      const colorAnual = alertaAnual ? 'rojo' : 'verde';
+
+      html += `
+        <div class="horas-empleado-card">
+          <div class="horas-empleado-nombre">${nombre}</div>
+
+          <div class="horas-barra-wrap">
+            <div class="horas-barra-label">
+              <span>Jornada ${mes ? 'del período' : 'anual'}</span>
+              <span>${horasOrdinarias.toFixed(1)}h / ${jornadaEsperada.toFixed(0)}h</span>
+            </div>
+            <div class="horas-barra">
+              <div class="horas-barra-fill ordinaria" style="width:${pctOrdinaria}%"></div>
+            </div>
+          </div>
+
+          <div class="horas-barra-wrap">
+            <div class="horas-barra-label">
+              <span>Horas extra anuales (máx. 80h)</span>
+              <span>${horasExtraAnyas(horasExtraNetas)}h / 80h</span>
+            </div>
+            <div class="horas-barra">
+              <div class="horas-barra-fill extra ${pctExtra >= 100 ? 'peligro' : ''}" style="width:${pctExtra}%"></div>
+            </div>
+          </div>
+
+          <div class="horas-barra-wrap">
+            <div class="horas-barra-label">
+              <span>Cómputo anual contrato</span>
+              <span>${horasOrdAnyo.toFixed(1)}h / ${horasAnualesContrato}h</span>
+            </div>
+            <div class="horas-barra">
+              <div class="horas-barra-fill ${alertaAnual ? 'peligro' : 'ordinaria'}" style="width:${pctAnual}%"></div>
+            </div>
+          </div>
+
+          <div class="horas-stats">
+            <div class="horas-stat">
+              <div class="horas-stat-val">${horasOrdinarias.toFixed(1)}h</div>
+              <div class="horas-stat-label">Trabajadas período</div>
+            </div>
+            <div class="horas-stat">
+              <div class="horas-stat-val ${colorExtra}">${horasExtraNetas.toFixed(1)}h</div>
+              <div class="horas-stat-label">Extras netas año</div>
+            </div>
+            <div class="horas-stat">
+              <div class="horas-stat-val">${horasComp.toFixed(1)}h</div>
+              <div class="horas-stat-label">Compensadas</div>
+            </div>
+            <div class="horas-stat">
+              <div class="horas-stat-val ${colorAnual}">${(horasAnualesContrato - horasOrdAnyo).toFixed(1)}h</div>
+              <div class="horas-stat-label">Restantes contrato</div>
+            </div>
+          </div>
+
+          ${alertaExtras ? `<div class="alerta-extras">⚠️ Cerca del límite de 80h extras (${horasExtraNetas.toFixed(1)}h acumuladas)</div>` : ''}
+          ${horasExtraNetas >= 80 ? `<div class="alerta-extras">🚨 LÍMITE DE 80H EXTRAS SUPERADO</div>` : ''}
+          ${alertaAnual ? `<div class="alerta-extras">⚠️ Próximo al límite de jornada anual del contrato</div>` : ''}
+        </div>`;
+    });
+
+    html += '</div>';
+    div.innerHTML = html;
+
+  } catch(err) {
+    div.innerHTML = `<div class="vacio">Error: ${err.message}</div>`;
+  }
+}
+
+function horasExtraAnyas(h) { return h.toFixed(1); }
+
 // ════════════════════════════════════════
 // NAVEGACIÓN
 // ════════════════════════════════════════
@@ -1145,6 +1428,7 @@ function mostrarSeccion(id) {
   else if (id === 'historial') cargarHistorial();
   else if (id === 'ausencias') cargarAusencias();
   else if (id === 'empleados') cargarEmpleados();
+  else if (id === 'horas') cargarControlHoras();
 }
 
 // ════════════════════════════════════════
