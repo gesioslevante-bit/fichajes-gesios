@@ -1096,11 +1096,11 @@ async function crearAusencia(datos) {
       EmpleadoID: estado.empleado.Title,
       EmpleadoNombre: `${estado.empleado.Nombre} ${estado.empleado.Apellidos}`,
       TipoAusencia: datos.tipo,
-      FechaInicio: datos.fechaInicio,
-      FechaFin: datos.fechaFin,
+      FechaInicio: new Date(datos.fechaInicio + 'T00:00:00').toISOString(),
+      FechaFin: new Date(datos.fechaFin + 'T00:00:00').toISOString(),
       Dias: datos.dias,
       Motivo: datos.motivo,
-      Estado: 'Pendiente',
+      Estado: 'PENDIENTE',
       FechaSolicitud: new Date().toISOString(),
       JustificanteURL: datos.justificanteURL || ''
     }
@@ -1518,6 +1518,10 @@ function navegar(destino) {
       break;
     case 'nueva-ausencia':
       mostrarPantalla('nueva-ausencia');
+      // Fecha por defecto: hoy
+      { const hoy = new Date().toISOString().split('T')[0];
+        document.getElementById('fecha-inicio-ausencia').value = hoy;
+        document.getElementById('fecha-fin-ausencia').value = hoy; }
       break;
     case 'historial':
       mostrarPantalla('historial');
