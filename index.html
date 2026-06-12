@@ -1098,7 +1098,6 @@ async function crearAusencia(datos) {
       TipoAusencia: datos.tipo,
       FechaInicio: new Date(datos.fechaInicio + 'T00:00:00').toISOString(),
       FechaFin: new Date(datos.fechaFin + 'T00:00:00').toISOString(),
-      Dias: datos.dias,
       Motivo: datos.motivo,
       Estado: 'PENDIENTE',
       FechaSolicitud: new Date().toISOString(),
