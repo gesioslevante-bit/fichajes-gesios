@@ -871,6 +871,55 @@
 </div>
 
 <!-- ══════════════════════════════════════════
+     PANTALLA: EDITAR AUSENCIA
+══════════════════════════════════════════ -->
+<div id="pantalla-editar-ausencia" class="pantalla">
+  <div class="header">
+    <button class="header-back" onclick="navegar('ausencias')">← Volver</button>
+    <h2>Modificar Ausencia</h2>
+    <div></div>
+  </div>
+
+  <div class="form-ausencia">
+    <input type="hidden" id="editar-ausencia-id">
+
+    <div class="campo-grupo">
+      <label>Tipo de ausencia</label>
+      <select id="editar-tipo-ausencia">
+        <option value="Vacaciones">Vacaciones</option>
+        <option value="Permiso médico">Permiso médico</option>
+        <option value="Baja médica">Baja médica</option>
+        <option value="Baja laboral">Baja laboral</option>
+        <option value="Compensación de horas">Compensación de horas</option>
+        <option value="Asuntos propios">Asuntos propios</option>
+        <option value="Otros">Otros</option>
+      </select>
+    </div>
+
+    <div class="campo-grupo">
+      <label>Fecha inicio</label>
+      <input type="date" id="editar-fecha-inicio">
+    </div>
+
+    <div class="campo-grupo">
+      <label>Fecha fin</label>
+      <input type="date" id="editar-fecha-fin">
+    </div>
+
+    <div class="campo-grupo">
+      <label>Motivo (opcional)</label>
+      <textarea id="editar-motivo" placeholder="Describe brevemente el motivo..."></textarea>
+    </div>
+
+    <div class="error-texto" id="error-editar-ausencia"></div>
+
+    <div style="margin-top:auto; padding-top:16px;">
+      <button class="btn btn-principal" onclick="guardarEdicionAusencia()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
      PANTALLA: HISTORIAL
 ══════════════════════════════════════════ -->
 <div id="pantalla-historial" class="pantalla">
@@ -1406,6 +1455,8 @@ async function cargarAusencias() {
       const fi = new Date(f.FechaInicio).toLocaleDateString('es-ES');
       const ff = new Date(f.FechaFin).toLocaleDateString('es-ES');
       const estado = (f.Estado || 'Pendiente').toLowerCase();
+      const estadoUp = (f.Estado || 'PENDIENTE').toUpperCase();
+      const esPendiente = estadoUp === 'PENDIENTE' || estadoUp === 'APROBADA';
       return `<div class="ausencia-card ${estado}">
         <div class="ausencia-header">
           <div class="ausencia-tipo">${f.TipoAusencia}</div>
@@ -1414,11 +1465,80 @@ async function cargarAusencias() {
         <div class="ausencia-fechas">${fi} — ${ff} · ${f.Dias || 1} día${f.Dias !== 1 ? 's' : ''}</div>
         ${f.Motivo ? `<div style="font-size:13px;color:var(--gris-medio);margin-top:6px;">${f.Motivo}</div>` : ''}
         ${f.AdminComentario ? `<div style="font-size:13px;color:var(--verde);margin-top:6px;font-style:italic;">"${f.AdminComentario}"</div>` : ''}
+        ${esPendiente ? `<div style="display:flex;gap:8px;margin-top:10px;">
+          <button style="flex:1;background:var(--azul);color:#fff;border:none;padding:7px;border-radius:8px;font-size:13px;cursor:pointer;" onclick="editarAusencia('${a.id}','${f.TipoAusencia}','${f.FechaInicio.slice(0,10)}','${f.FechaFin.slice(0,10)}',encodeURIComponent('${(f.Motivo||'')}'))">✏️ Modificar</button>
+          <button style="flex:1;background:#fff;color:var(--rojo);border:1.5px solid var(--rojo);padding:7px;border-radius:8px;font-size:13px;cursor:pointer;" onclick="cancelarAusencia('${a.id}')">🗑️ Cancelar</button>
+        </div>` : ''}
       </div>`;
     }).join('');
   } catch(e) {
     lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--rojo);font-size:14px;">Error cargando ausencias</div>`;
   }
+}
+
+// ── EDITAR / CANCELAR AUSENCIA ──────────────────────────────
+function editarAusencia(id, tipo, fechaInicio, fechaFin, motivoCodificado) {
+  document.getElementById('editar-ausencia-id').value = id;
+  document.getElementById('editar-tipo-ausencia').value = tipo;
+  document.getElementById('editar-fecha-inicio').value = fechaInicio;
+  document.getElementById('editar-fecha-fin').value = fechaFin;
+  document.getElementById('editar-motivo').value = decodeURIComponent(motivoCodificado);
+  document.getElementById('error-editar-ausencia').textContent = '';
+  navegar('editar-ausencia');
+}
+
+async function guardarEdicionAusencia() {
+  const id = document.getElementById('editar-ausencia-id').value;
+  const tipo = document.getElementById('editar-tipo-ausencia').value;
+  const fi = document.getElementById('editar-fecha-inicio').value;
+  const ff = document.getElementById('editar-fecha-fin').value;
+  const motivo = document.getElementById('editar-motivo').value;
+  const errDiv = document.getElementById('error-editar-ausencia');
+
+  if (!fi || !ff) { errDiv.textContent = 'Las fechas son obligatorias'; return; }
+  if (new Date(ff) < new Date(fi)) { errDiv.textContent = 'La fecha fin no puede ser anterior a la de inicio'; return; }
+
+  const dias = Math.round((new Date(ff) - new Date(fi)) / 86400000) + 1;
+  mostrarCargando('Guardando cambios...');
+  try {
+    await actualizarAusencia(id, {
+      TipoAusencia: tipo,
+      FechaInicio: new Date(fi + 'T00:00:00').toISOString(),
+      FechaFin: new Date(ff + 'T00:00:00').toISOString(),
+      Dias: dias,
+      Motivo: motivo
+    });
+    ocultarCargando();
+    toast('✓ Solicitud modificada', 'ok');
+    navegar('ausencias');
+  } catch(e) {
+    ocultarCargando();
+    errDiv.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function cancelarAusencia(id) {
+  if (!confirm('¿Seguro que quieres cancelar esta solicitud? Se eliminará definitivamente.')) return;
+  mostrarCargando('Cancelando solicitud...');
+  try {
+    await eliminarAusencia(id);
+    ocultarCargando();
+    toast('✓ Solicitud cancelada', 'ok');
+    cargarAusencias();
+  } catch(e) {
+    ocultarCargando();
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function actualizarAusencia(id, campos) {
+  const siteId = await obtenerSiteId();
+  return await graphCall(`/sites/${siteId}/lists/Ausencias/items/${id}/fields`, 'PATCH', campos);
+}
+
+async function eliminarAusencia(id) {
+  const siteId = await obtenerSiteId();
+  return await graphCall(`/sites/${siteId}/lists/Ausencias/items/${id}`, 'DELETE');
 }
 
 async function enviarAusencia() {
@@ -1525,6 +1645,9 @@ function navegar(destino) {
       { const hoy = new Date().toISOString().split('T')[0];
         document.getElementById('fecha-inicio-ausencia').value = hoy;
         document.getElementById('fecha-fin-ausencia').value = hoy; }
+      break;
+    case 'editar-ausencia':
+      mostrarPantalla('editar-ausencia');
       break;
     case 'historial':
       mostrarPantalla('historial');
