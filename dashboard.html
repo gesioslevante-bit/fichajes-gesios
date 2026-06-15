@@ -1516,16 +1516,16 @@ async function exportarPDF() {
 
   toast('Generando PDF...', 'ok');
   try {
-    const siteId = await obtenerSiteId();
+    const siteId = await cargarSiteId();
     let url = `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=1000&$filter=fields/Timestamp ge '${desde}T00:00:00Z' and fields/Timestamp le '${hasta}T23:59:59Z'`;
     if (empFiltro) url += ` and fields/EmpleadoID eq '${empFiltro}'`;
     const resp = await graphCall(url);
     const fichajes = resp.value || [];
 
-    const empResp = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
-    const empleados = empResp.value || [];
+    // Reusar empleadosCache si está disponible
+    if (!empleadosCache || !empleadosCache.length) { await cargarEmpleados(); }
     const empMap = {};
-    empleados.forEach(e => { empMap[e.fields.Title] = e.fields; });
+    (empleadosCache || []).forEach(e => { empMap[e.fields.Title] = e.fields; });
 
     // Agrupar jornadas
     const jornadas = {};
