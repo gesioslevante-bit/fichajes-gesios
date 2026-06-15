@@ -1514,7 +1514,7 @@ async function exportarPDF() {
   const empFiltro = document.getElementById('itss-empleado').value;
   if (!desde || !hasta) { toast('Selecciona el período de fechas', 'error'); return; }
 
-  mostrarCargando('Generando informe PDF...');
+  toast('Generando PDF...', 'ok');
   try {
     const siteId = await obtenerSiteId();
     let url = `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=1000&$filter=fields/Timestamp ge '${desde}T00:00:00Z' and fields/Timestamp le '${hasta}T23:59:59Z'`;
@@ -1633,10 +1633,8 @@ async function exportarPDF() {
     doc.text(`Total horas: ${totalHoras.toFixed(2)}h  |  Total extras: ${totalExtras.toFixed(2)}h`, pageW - 12, finalY, { align: 'right' });
 
     doc.save(`InformeJornada_${desde}_${hasta}.pdf`);
-    ocultarCargando();
     toast('✓ Informe PDF generado', 'ok');
   } catch(err) {
-    ocultarCargando();
     toast('Error: ' + err.message, 'error');
   }
 }
