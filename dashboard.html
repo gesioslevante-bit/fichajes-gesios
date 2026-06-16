@@ -715,9 +715,9 @@ async function mostrarApp(account) {
 // ════════════════════════════════════════
 async function graphCall(endpoint) {
   await obtenerToken();
-  const r = await fetch('https://graph.microsoft.com/v1.0' + endpoint, {
-    headers: { Authorization: 'Bearer ' + accessToken }
-  });
+  const headers = { Authorization: 'Bearer ' + accessToken };
+  if (endpoint.includes('Ausencias')) headers['Prefer'] = 'HonorNonIndexedQueriesWarningMayFailRandomly';
+  const r = await fetch('https://graph.microsoft.com/v1.0' + endpoint, { headers });
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.error?.message || r.statusText);
