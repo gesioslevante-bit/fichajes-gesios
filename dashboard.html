@@ -1224,7 +1224,7 @@ function generarCSVFichajes(items, empleadosCache, compensaciones) {
 
   let csv = 'Empleado;Fecha;Entrada;Salida;Horas_Trabajadas;Horas_Extras\n';
   Object.values(jornadas)
-    .sort((a, b) => (a.emp + a.dia).localeCompare(b.emp + b.dia))
+    .sort((a, b) => (a.dia + a.emp).localeCompare(b.dia + b.emp))
     .forEach(j => {
       const entrada = j.entradas[0]
         ? new Date(j.entradas[0]).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'})
@@ -1336,20 +1336,15 @@ async function cargarControlHoras() {
       porEmp[emp][dia].push(f.fields);
     });
 
-    // Compensaciones aprobadas en el período
+    // Compensaciones aprobadas en el período (usando HorasCompensadas exactas)
     const compPorEmp = {};
     ausencias.forEach(a => {
       const f = a.fields;
       if (f.TipoAusencia !== 'Compensación de horas') return;
-      const fi = new Date(f.FechaInicio);
-      const ff = new Date(f.FechaFin);
-      if (ff < desde || fi > hasta) return;
+      if (f.Estado !== 'APROBADA') return;
       const emp = f.EmpleadoID;
       if (!compPorEmp[emp]) compPorEmp[emp] = 0;
-      // Contar días laborables de la compensación en el período
-      const d1 = fi < desde ? desde : fi;
-      const d2 = ff > hasta ? hasta : ff;
-      compPorEmp[emp] += diasLaborables(d1, d2);
+      compPorEmp[emp] += parseFloat(f.HorasCompensadas) || 0;
     });
 
     if (!empleados.length) {
@@ -1408,6 +1403,8 @@ async function cargarControlHoras() {
       const nombre = e.fields.Title;
       const horasAnualesContrato = parseFloat(e.fields.HorasAnuales) || 1800;
       const jornadaDiaria = horasAnualesContrato / diasAnyo;
+      const horasJornada = parseFloat(e.fields.HorasJornada) || 8;
+      const limiteExtras = horasJornada >= 8 ? 80 : 60;
 
       // Cálculo período seleccionado
       const { horasOrdinarias, horasExtra } = calcularHorasEmp(porEmp[nombre] || {}, jornadaDiaria);
@@ -1415,9 +1412,8 @@ async function cargarControlHoras() {
       // Cálculo año completo (para extras acumuladas y control anual)
       const { horasOrdinarias: horasOrdAnyo, horasExtra: horasExtraAnyo } = calcularHorasEmp(porEmpAnyo[nombre] || {}, jornadaDiaria);
 
-      // Compensaciones en período
-      const diasComp = compPorEmp[nombre] || 0;
-      const horasComp = diasComp * jornadaDiaria;
+      // Compensaciones aprobadas (horas exactas)
+      const horasComp = compPorEmp[nombre] || 0;
       const horasExtraNetas = Math.max(0, horasExtraAnyo - horasComp);
 
       // Jornada esperada en el período
@@ -1425,12 +1421,12 @@ async function cargarControlHoras() {
 
       // Porcentajes para barras
       const pctOrdinaria = Math.min(100, (horasOrdinarias / jornadaEsperada) * 100) || 0;
-      const pctExtra = Math.min(100, (horasExtraNetas / 80) * 100) || 0;
+      const pctExtra = Math.min(100, (horasExtraNetas / limiteExtras) * 100) || 0;
       const pctAnual = Math.min(100, (horasOrdAnyo / horasAnualesContrato) * 100) || 0;
 
       const alertaExtras = horasExtraNetas >= 72; // aviso al 90%
       const alertaAnual = horasOrdAnyo >= horasAnualesContrato * 0.95;
-      const colorExtra = horasExtraNetas >= 80 ? 'rojo' : horasExtraNetas >= 60 ? 'naranja' : 'verde';
+      const colorExtra = horasExtraNetas >= limiteExtras ? 'rojo' : horasExtraNetas >= limiteExtras * 0.75 ? 'naranja' : 'verde';
       const colorAnual = alertaAnual ? 'rojo' : 'verde';
 
       html += `
@@ -1449,8 +1445,8 @@ async function cargarControlHoras() {
 
           <div class="horas-barra-wrap">
             <div class="horas-barra-label">
-              <span>Horas extra anuales (máx. 80h)</span>
-              <span>${horasExtraAnyas(horasExtraNetas)}h / 80h</span>
+              <span>Horas extra anuales (máx. ${limiteExtras}h)</span>
+              <span>${horasExtraAnyas(horasExtraNetas)}h / ${limiteExtras}h</span>
             </div>
             <div class="horas-barra">
               <div class="horas-barra-fill extra ${pctExtra >= 100 ? 'peligro' : ''}" style="width:${pctExtra}%"></div>
@@ -1486,8 +1482,8 @@ async function cargarControlHoras() {
             </div>
           </div>
 
-          ${alertaExtras ? `<div class="alerta-extras">⚠️ Cerca del límite de 80h extras (${horasExtraNetas.toFixed(1)}h acumuladas)</div>` : ''}
-          ${horasExtraNetas >= 80 ? `<div class="alerta-extras">🚨 LÍMITE DE 80H EXTRAS SUPERADO</div>` : ''}
+          ${alertaExtras ? `<div class="alerta-extras">⚠️ Cerca del límite de ${limiteExtras}h extras (${horasExtraNetas.toFixed(1)}h acumuladas)</div>` : ''}
+          ${horasExtraNetas >= limiteExtras ? `<div class="alerta-extras">🚨 LÍMITE DE ${limiteExtras}H EXTRAS SUPERADO</div>` : ''}
           ${alertaAnual ? `<div class="alerta-extras">⚠️ Próximo al límite de jornada anual del contrato</div>` : ''}
         </div>`;
     });
@@ -1638,8 +1634,8 @@ async function exportarPDF() {
       return [j.emp, nif, j.dia, entrada, salida, horas, extras];
     });
 
-    // Ordenar por empleado y fecha
-    rows.sort((a,b) => (a[0]+a[2]).localeCompare(b[0]+b[2]));
+    // Ordenar por fecha y luego empleado
+    rows.sort((a,b) => (a[2]+a[0]).localeCompare(b[2]+b[0]));
 
     doc.autoTable({
       startY: empFiltro ? 55 : 51,
