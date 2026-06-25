@@ -1647,7 +1647,7 @@ function actualizarRangoAusencia() {
   if (fiVal && ffVal) {
     const dias = Math.round((new Date(ffVal) - new Date(fiVal)) / 86400000) + 1;
     resumen.style.display = 'block';
-    resumen.textContent = dias === 1 ? '1 día seleccionado' : ;
+    resumen.textContent = dias === 1 ? '1 día seleccionado' : dias + ' días seleccionados';
   } else {
     resumen.style.display = 'none';
   }
@@ -1668,7 +1668,7 @@ function actualizarRangoEditar() {
   if (fiVal && ffVal) {
     const dias = Math.round((new Date(ffVal) - new Date(fiVal)) / 86400000) + 1;
     resumen.style.display = 'block';
-    resumen.textContent = dias === 1 ? '1 día seleccionado' : ;
+    resumen.textContent = dias === 1 ? '1 día seleccionado' : dias + ' días seleccionados';
   } else {
     resumen.style.display = 'none';
   }
