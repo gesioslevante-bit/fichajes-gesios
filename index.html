@@ -828,8 +828,6 @@
         <option value="">Selecciona...</option>
         <option value="Vacaciones">Vacaciones</option>
         <option value="Permiso médico">Permiso médico</option>
-        <option value="Baja médica">Baja médica</option>
-        <option value="Baja laboral">Baja laboral</option>
         <option value="Compensación de horas">Compensación de horas</option>
         <option value="Asuntos propios">Asuntos propios</option>
         <option value="Otros">Otros</option>
@@ -837,14 +835,16 @@
     </div>
 
     <div class="campo-grupo">
-      <label>Fecha inicio</label>
-      <input type="date" id="fecha-inicio-ausencia">
+      <label>Fecha de inicio</label>
+      <input type="date" id="fecha-inicio-ausencia" onchange="actualizarRangoAusencia()">
     </div>
 
     <div class="campo-grupo">
-      <label>Fecha fin</label>
-      <input type="date" id="fecha-fin-ausencia">
+      <label>Fecha de fin</label>
+      <input type="date" id="fecha-fin-ausencia" onchange="actualizarRangoAusencia()">
     </div>
+
+    <div id="resumen-dias-ausencia" style="display:none;background:var(--verde);color:#fff;border-radius:10px;padding:10px 14px;font-size:14px;font-weight:600;text-align:center;margin-bottom:4px;"></div>
 
     <div class="campo-grupo">
       <label>Motivo (opcional)</label>
@@ -888,8 +888,6 @@
       <select id="editar-tipo-ausencia">
         <option value="Vacaciones">Vacaciones</option>
         <option value="Permiso médico">Permiso médico</option>
-        <option value="Baja médica">Baja médica</option>
-        <option value="Baja laboral">Baja laboral</option>
         <option value="Compensación de horas">Compensación de horas</option>
         <option value="Asuntos propios">Asuntos propios</option>
         <option value="Otros">Otros</option>
@@ -897,14 +895,16 @@
     </div>
 
     <div class="campo-grupo">
-      <label>Fecha inicio</label>
-      <input type="date" id="editar-fecha-inicio">
+      <label>Fecha de inicio</label>
+      <input type="date" id="editar-fecha-inicio" onchange="actualizarRangoEditar()">
     </div>
 
     <div class="campo-grupo">
-      <label>Fecha fin</label>
-      <input type="date" id="editar-fecha-fin">
+      <label>Fecha de fin</label>
+      <input type="date" id="editar-fecha-fin" onchange="actualizarRangoEditar()">
     </div>
+
+    <div id="resumen-dias-editar" style="display:none;background:var(--verde);color:#fff;border-radius:10px;padding:10px 14px;font-size:14px;font-weight:600;text-align:center;margin-bottom:4px;"></div>
 
     <div class="campo-grupo">
       <label>Motivo (opcional)</label>
@@ -1485,6 +1485,7 @@ function editarAusencia(id, tipo, fechaInicio, fechaFin, motivoCodificado) {
   document.getElementById('editar-motivo').value = decodeURIComponent(motivoCodificado);
   document.getElementById('error-editar-ausencia').textContent = '';
   navegar('editar-ausencia');
+  setTimeout(actualizarRangoEditar, 50);
 }
 
 async function guardarEdicionAusencia() {
@@ -1628,6 +1629,52 @@ async function cargarHistorial() {
 }
 
 // ══════════════════════════════════════════
+// RANGO DE FECHAS - AUSENCIAS
+// ══════════════════════════════════════════
+function actualizarRangoAusencia() {
+  const fi = document.getElementById('fecha-inicio-ausencia').value;
+  const ff = document.getElementById('fecha-fin-ausencia').value;
+  const resumen = document.getElementById('resumen-dias-ausencia');
+
+  // Si la fecha fin es anterior a inicio, ajustarla automáticamente
+  if (fi && ff && ff < fi) {
+    document.getElementById('fecha-fin-ausencia').value = fi;
+  }
+
+  const fiVal = document.getElementById('fecha-inicio-ausencia').value;
+  const ffVal = document.getElementById('fecha-fin-ausencia').value;
+
+  if (fiVal && ffVal) {
+    const dias = Math.round((new Date(ffVal) - new Date(fiVal)) / 86400000) + 1;
+    resumen.style.display = 'block';
+    resumen.textContent = dias === 1 ? '1 día seleccionado' : ;
+  } else {
+    resumen.style.display = 'none';
+  }
+}
+
+function actualizarRangoEditar() {
+  const fi = document.getElementById('editar-fecha-inicio').value;
+  const ff = document.getElementById('editar-fecha-fin').value;
+  const resumen = document.getElementById('resumen-dias-editar');
+
+  if (fi && ff && ff < fi) {
+    document.getElementById('editar-fecha-fin').value = fi;
+  }
+
+  const fiVal = document.getElementById('editar-fecha-inicio').value;
+  const ffVal = document.getElementById('editar-fecha-fin').value;
+
+  if (fiVal && ffVal) {
+    const dias = Math.round((new Date(ffVal) - new Date(fiVal)) / 86400000) + 1;
+    resumen.style.display = 'block';
+    resumen.textContent = dias === 1 ? '1 día seleccionado' : ;
+  } else {
+    resumen.style.display = 'none';
+  }
+}
+
+// ══════════════════════════════════════════
 // NAVEGACIÓN
 // ══════════════════════════════════════════
 function navegar(destino) {
@@ -1641,10 +1688,12 @@ function navegar(destino) {
       break;
     case 'nueva-ausencia':
       mostrarPantalla('nueva-ausencia');
-      // Fecha por defecto: hoy
+      // Fecha por defecto: hoy para inicio, libre para que el empleado seleccione el rango
       { const hoy = new Date().toISOString().split('T')[0];
         document.getElementById('fecha-inicio-ausencia').value = hoy;
-        document.getElementById('fecha-fin-ausencia').value = hoy; }
+        document.getElementById('fecha-fin-ausencia').value = hoy;
+        document.getElementById('resumen-dias-ausencia').style.display = 'none';
+        actualizarRangoAusencia(); }
       break;
     case 'editar-ausencia':
       mostrarPantalla('editar-ausencia');
