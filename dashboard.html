@@ -305,6 +305,20 @@ tbody tr:hover { background: var(--gris-fondo); }
 .horas-barra-fill.ordinaria { background: var(--azul); }
 .horas-barra-fill.extra { background: var(--naranja); }
 .horas-barra-fill.peligro { background: var(--rojo); }
+
+/* ── Calendario ── */
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+.cal-header-day { text-align:center; font-size:11px; font-weight:700; color:var(--gris-texto); padding:6px 0; }
+.cal-day { min-height:72px; background:#fff; border:1px solid var(--gris-borde); border-radius:6px; padding:4px; font-size:11px; position:relative; }
+.cal-day.otro-mes { background:#f9fafb; opacity:.5; }
+.cal-day.hoy { border-color:var(--azul); }
+.cal-num { font-weight:700; color:#374151; margin-bottom:2px; }
+.cal-chip { border-radius:3px; padding:1px 4px; margin-bottom:2px; font-size:10px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; display:block; }
+.cal-chip.vacaciones { background:#3b82f6; }
+.cal-chip.permiso { background:#f59e0b; }
+.cal-chip.baja { background:#ef4444; }
+.cal-chip.comp { background:#8b5cf6; }
+.cal-chip.otros { background:#6b7280; }
 .horas-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .horas-stat { background: var(--gris-fondo); border-radius: 8px; padding: 8px 10px; }
 .horas-stat-val { font-size: 18px; font-weight: 700; color: var(--azul); }
@@ -374,6 +388,18 @@ tbody tr:hover { background: var(--gris-fondo); }
       </div>
       <div class="nav-item" onclick="mostrarSeccion('horas')">
         <span class="icono">⏱️</span> Control Horas
+      </div>
+      <div class="nav-item" onclick="mostrarSeccion('bajas')">
+        <span class="icono">🤒</span> Bajas
+      </div>
+      <div class="nav-item" onclick="mostrarSeccion('nominas')">
+        <span class="icono">💶</span> Nóminas
+      </div>
+      <div class="nav-item" onclick="mostrarSeccion('calendario')">
+        <span class="icono">🗓️</span> Calendario
+      </div>
+      <div class="nav-item" onclick="mostrarSeccion('fichaje-admin')">
+        <span class="icono">🖊️</span> Fichar empleado
       </div>
     </div>
     <div class="sidebar-footer">
@@ -583,6 +609,334 @@ tbody tr:hover { background: var(--gris-fondo); }
       </div>
     </div>
 
+    <!-- ── BAJAS ── -->
+    <div id="sec-bajas" class="seccion">
+      <div class="page-header">
+        <h2>Bajas médicas y laborales</h2>
+        <p>Registro manual de bajas por enfermedad común o accidente laboral</p>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Nueva baja</h3></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px">
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Empleado</label>
+            <select id="baja-empleado" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px"></select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Tipo de baja</label>
+            <select id="baja-tipo" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
+              <option value="Baja médica">Baja médica (enfermedad común)</option>
+              <option value="Baja laboral">Baja laboral (accidente laboral)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Fecha inicio</label>
+            <input type="date" id="baja-inicio" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Fecha fin (vacío si sigue de baja)</label>
+            <input type="date" id="baja-fin" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
+          </div>
+          <div style="grid-column:1/-1">
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Observaciones</label>
+            <textarea id="baja-obs" rows="2" placeholder="Parte médico, nº expediente..." style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box"></textarea>
+          </div>
+          <div style="grid-column:1/-1">
+            <button class="btn btn-primario" onclick="registrarBaja()">➕ Registrar baja</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Historial de bajas</h3>
+          <button class="btn-refresh" onclick="cargarBajas()" title="Actualizar">↻</button>
+        </div>
+        <div class="tabla-wrap">
+          <table>
+            <thead><tr><th>Empleado</th><th>Tipo</th><th>Inicio</th><th>Fin</th><th>Días</th><th>Obs.</th><th>Acciones</th></tr></thead>
+            <tbody id="tabla-bajas"><tr><td colspan="7" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── NÓMINAS ── -->
+    <div id="sec-nominas" class="seccion">
+      <div class="page-header">
+        <h2>Nóminas</h2>
+        <p>Sube las nóminas y envíalas por email a cada empleado</p>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Subir nómina</h3></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px">
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Empleado</label>
+            <select id="nomina-empleado" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px"></select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Período</label>
+            <input type="month" id="nomina-periodo" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
+          </div>
+          <div style="grid-column:1/-1">
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Archivo PDF</label>
+            <input type="file" id="nomina-archivo" accept=".pdf" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
+          </div>
+          <div style="grid-column:1/-1;display:flex;gap:10px">
+            <button class="btn btn-primario" onclick="subirYEnviarNomina()">📤 Subir y enviar por email</button>
+            <button class="btn btn-verde" onclick="soloSubirNomina()">💾 Solo guardar</button>
+          </div>
+          <div style="grid-column:1/-1"><div id="nomina-status" style="font-size:13px;min-height:20px"></div></div>
+        </div>
+        <div style="padding:0 16px 12px;font-size:12px;color:var(--gris-texto)">
+          ⚠️ El envío usa el campo <strong>Email</strong> de la ficha del empleado. Asegúrate de que esté relleno.
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Nóminas guardadas</h3>
+          <button class="btn-refresh" onclick="cargarNominas()" title="Actualizar">↻</button>
+        </div>
+        <div class="tabla-wrap">
+          <table>
+            <thead><tr><th>Empleado</th><th>Período</th><th>Fecha subida</th><th>Archivo</th></tr></thead>
+            <tbody id="tabla-nominas"><tr><td colspan="4" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CALENDARIO ── -->
+    <div id="sec-calendario" class="seccion">
+      <div class="page-header">
+        <h2>Calendario de ausencias</h2>
+        <p>Visión mensual de ausencias aprobadas</p>
+      </div>
+      <div class="filtros" style="margin-bottom:16px">
+        <select id="cal-mes" onchange="renderCalendario()">
+          <option value="0">Enero</option><option value="1">Febrero</option>
+          <option value="2">Marzo</option><option value="3">Abril</option>
+          <option value="4">Mayo</option><option value="5">Junio</option>
+          <option value="6">Julio</option><option value="7">Agosto</option>
+          <option value="8">Septiembre</option><option value="9">Octubre</option>
+          <option value="10">Noviembre</option><option value="11">Diciembre</option>
+        </select>
+        <select id="cal-anyo" onchange="renderCalendario()">
+          <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
+        </select>
+        <button class="btn btn-primario" onclick="renderCalendario()">🔍 Ver</button>
+      </div>
+      <div id="calendario-wrap"></div>
+      <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px">
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#3b82f6;display:inline-block"></span> Vacaciones</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#f59e0b;display:inline-block"></span> Permiso médico</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#ef4444;display:inline-block"></span> Baja médica / laboral</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#8b5cf6;display:inline-block"></span> Comp. / Asuntos propios</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#6b7280;display:inline-block"></span> Otros</span>
+      </div>
+    </div>
+
+    <!-- ── FICHAR POR EMPLEADO ── -->
+    <div id="sec-fichaje-admin" class="seccion">
+      <div class="page-header">
+        <h2>Fichar por empleado</h2>
+        <p>Registra una entrada o salida manualmente en nombre de un empleado</p>
+      </div>
+      <div class="card" style="max-width:520px">
+        <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Empleado</label>
+            <select id="fadmin-empleado" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px"></select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Tipo de fichaje</label>
+            <div style="display:flex;gap:16px">
+              <label style="cursor:pointer;font-size:14px"><input type="radio" name="fadmin-tipo" value="ENTRADA" checked style="margin-right:6px">✅ Entrada</label>
+              <label style="cursor:pointer;font-size:14px"><input type="radio" name="fadmin-tipo" value="SALIDA" style="margin-right:6px">🚪 Salida</label>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Fecha</label>
+              <input type="date" id="fadmin-fecha" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Hora</label>
+              <input type="time" id="fadmin-hora" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px;box-sizing:border-box">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Observaciones (opcional)</label>
+            <input type="text" id="fadmin-obs" placeholder="Ej: Se olvidó fichar" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px;box-sizing:border-box">
+          </div>
+          <button class="btn btn-primario" onclick="ficharPorEmpleado()" style="width:100%;padding:12px;font-size:15px">🖊️ Registrar fichaje</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── BAJAS ── -->
+    <div id="sec-bajas" class="seccion">
+      <div class="page-header">
+        <h2>Bajas médicas y laborales</h2>
+        <p>Registro manual de bajas por enfermedad común o accidente laboral</p>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Nueva baja</h3></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px">
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Empleado</label>
+            <select id="baja-empleado" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px"></select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Tipo de baja</label>
+            <select id="baja-tipo" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
+              <option value="Baja médica">Baja médica (enfermedad común)</option>
+              <option value="Baja laboral">Baja laboral (accidente laboral)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Fecha inicio</label>
+            <input type="date" id="baja-inicio" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Fecha fin (vacío si sigue de baja)</label>
+            <input type="date" id="baja-fin" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
+          </div>
+          <div style="grid-column:1/-1">
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Observaciones</label>
+            <textarea id="baja-obs" rows="2" placeholder="Parte médico, nº expediente..." style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box"></textarea>
+          </div>
+          <div style="grid-column:1/-1">
+            <button class="btn btn-primario" onclick="registrarBaja()">➕ Registrar baja</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Historial de bajas</h3>
+          <button class="btn-refresh" onclick="cargarBajas()" title="Actualizar">↻</button>
+        </div>
+        <div class="tabla-wrap">
+          <table>
+            <thead><tr><th>Empleado</th><th>Tipo</th><th>Inicio</th><th>Fin</th><th>Días</th><th>Obs.</th><th>Acciones</th></tr></thead>
+            <tbody id="tabla-bajas"><tr><td colspan="7" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── NÓMINAS ── -->
+    <div id="sec-nominas" class="seccion">
+      <div class="page-header">
+        <h2>Nóminas</h2>
+        <p>Sube las nóminas y envíalas por email a cada empleado</p>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Subir nómina</h3></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px">
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Empleado</label>
+            <select id="nomina-empleado" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px"></select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Período</label>
+            <input type="month" id="nomina-periodo" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
+          </div>
+          <div style="grid-column:1/-1">
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Archivo PDF</label>
+            <input type="file" id="nomina-archivo" accept=".pdf" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
+          </div>
+          <div style="grid-column:1/-1;display:flex;gap:10px">
+            <button class="btn btn-primario" onclick="subirYEnviarNomina()">📤 Subir y enviar por email</button>
+            <button class="btn btn-verde" onclick="soloSubirNomina()">💾 Solo guardar</button>
+          </div>
+          <div style="grid-column:1/-1"><div id="nomina-status" style="font-size:13px;min-height:20px"></div></div>
+        </div>
+        <div style="padding:0 16px 12px;font-size:12px;color:var(--gris-texto)">
+          ⚠️ El envío usa el campo <strong>Email</strong> de la ficha del empleado. Asegúrate de que esté relleno.
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Nóminas guardadas</h3>
+          <button class="btn-refresh" onclick="cargarNominas()" title="Actualizar">↻</button>
+        </div>
+        <div class="tabla-wrap">
+          <table>
+            <thead><tr><th>Empleado</th><th>Período</th><th>Fecha subida</th><th>Archivo</th></tr></thead>
+            <tbody id="tabla-nominas"><tr><td colspan="4" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CALENDARIO ── -->
+    <div id="sec-calendario" class="seccion">
+      <div class="page-header">
+        <h2>Calendario de ausencias</h2>
+        <p>Visión mensual de ausencias aprobadas</p>
+      </div>
+      <div class="filtros" style="margin-bottom:16px">
+        <select id="cal-mes" onchange="renderCalendario()">
+          <option value="0">Enero</option><option value="1">Febrero</option>
+          <option value="2">Marzo</option><option value="3">Abril</option>
+          <option value="4">Mayo</option><option value="5">Junio</option>
+          <option value="6">Julio</option><option value="7">Agosto</option>
+          <option value="8">Septiembre</option><option value="9">Octubre</option>
+          <option value="10">Noviembre</option><option value="11">Diciembre</option>
+        </select>
+        <select id="cal-anyo" onchange="renderCalendario()">
+          <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
+        </select>
+        <button class="btn btn-primario" onclick="renderCalendario()">🔍 Ver</button>
+      </div>
+      <div id="calendario-wrap"></div>
+      <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px">
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#3b82f6;display:inline-block"></span> Vacaciones</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#f59e0b;display:inline-block"></span> Permiso médico</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#ef4444;display:inline-block"></span> Baja médica / laboral</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#8b5cf6;display:inline-block"></span> Comp. / Asuntos propios</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#6b7280;display:inline-block"></span> Otros</span>
+      </div>
+    </div>
+
+    <!-- ── FICHAR POR EMPLEADO ── -->
+    <div id="sec-fichaje-admin" class="seccion">
+      <div class="page-header">
+        <h2>Fichar por empleado</h2>
+        <p>Registra una entrada o salida manualmente en nombre de un empleado</p>
+      </div>
+      <div class="card" style="max-width:520px">
+        <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Empleado</label>
+            <select id="fadmin-empleado" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px"></select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Tipo de fichaje</label>
+            <div style="display:flex;gap:16px">
+              <label style="cursor:pointer;font-size:14px"><input type="radio" name="fadmin-tipo" value="ENTRADA" checked style="margin-right:6px">✅ Entrada</label>
+              <label style="cursor:pointer;font-size:14px"><input type="radio" name="fadmin-tipo" value="SALIDA" style="margin-right:6px">🚪 Salida</label>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Fecha</label>
+              <input type="date" id="fadmin-fecha" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Hora</label>
+              <input type="time" id="fadmin-hora" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px;box-sizing:border-box">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Observaciones (opcional)</label>
+            <input type="text" id="fadmin-obs" placeholder="Ej: Se olvidó fichar" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px;box-sizing:border-box">
+          </div>
+          <button class="btn btn-primario" onclick="ficharPorEmpleado()" style="width:100%;padding:12px;font-size:15px">🖊️ Registrar fichaje</button>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -777,7 +1131,7 @@ async function cargarEmpleadosEnSelectores() {
     const data = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
     empleadosCache = data.value || [];
     const opts = empleadosCache.map(e => `<option value="${e.fields.Title}">${e.fields.Title}</option>`).join('');
-    ['filtro-empleado','filtro-ausencia-empleado','exp-empleado-mes','itss-empleado'].forEach(id => {
+    ['filtro-empleado','filtro-ausencia-empleado','exp-empleado-mes','itss-empleado','baja-empleado','nomina-empleado','fadmin-empleado'].forEach(id => {
       const sel = document.getElementById(id);
       if (sel) sel.innerHTML = '<option value="">Todos</option>' + opts;
     });
@@ -1510,7 +1864,11 @@ function mostrarSeccion(id) {
   // Carga lazy
   if (id === 'actividad') cargarActividadHoy();
   else if (id === 'historial') cargarHistorial();
-  else if (id === 'ausencias') cargarAusencias();
+  else if (id === 'ausencias')      cargarAusencias();
+  else if (id === 'bajas')          cargarBajas();
+  else if (id === 'nominas')        { cargarNominas(); cargarSelectsNominas(); }
+  else if (id === 'calendario')     renderCalendario();
+  else if (id === 'fichaje-admin')  iniciarFichajeAdmin();
   else if (id === 'empleados') cargarEmpleados();
   else if (id === 'horas') cargarControlHoras();
 }
@@ -1579,7 +1937,7 @@ async function exportarPDF() {
     });
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
 
@@ -1681,6 +2039,325 @@ async function exportarPDF() {
   } catch(err) {
     toast('Error: ' + err.message, 'error');
   }
+}
+
+
+// ════════════════════════════════════════
+// BAJAS (registro manual admin)
+// ════════════════════════════════════════
+async function cargarBajas() {
+  const tbody = document.getElementById('tabla-bajas');
+  tbody.innerHTML = '<tr><td colspan="7" class="cargando"><span class="spinner"></span> Cargando...</td></tr>';
+  try {
+    const data = await graphCall(
+      `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=200&$filter=fields/TipoAusencia eq 'Baja médica' or fields/TipoAusencia eq 'Baja laboral'`
+    );
+    const items = (data.value || []).sort((a,b) =>
+      (b.fields.FechaInicio||'').localeCompare(a.fields.FechaInicio||''));
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="vacio"><div class="ico">🤒</div>No hay bajas registradas</td></tr>';
+      return;
+    }
+    tbody.innerHTML = items.map(item => {
+      const f = item.fields;
+      const fi = f.FechaInicio ? f.FechaInicio.slice(0,10) : '—';
+      const ff = f.FechaFin ? f.FechaFin.slice(0,10) : '<em style="color:var(--naranja)">En curso</em>';
+      let dias = '—';
+      if (f.FechaInicio && f.FechaFin) {
+        dias = Math.round((new Date(f.FechaFin) - new Date(f.FechaInicio)) / 86400000) + 1;
+      }
+      const badge = f.TipoAusencia === 'Baja laboral'
+        ? '<span class="badge badge-rojo"><span class="dot"></span>Laboral</span>'
+        : '<span class="badge badge-naranja"><span class="dot"></span>Médica</span>';
+      return `<tr>
+        <td><strong>${f.EmpleadoID||'—'}</strong></td>
+        <td>${badge}</td>
+        <td>${fi}</td>
+        <td>${ff}</td>
+        <td>${dias}</td>
+        <td style="max-width:180px;white-space:normal;font-size:12px">${f.Motivo||'—'}</td>
+        <td>
+          ${!f.FechaFin ? `<button class="btn btn-verde" onclick="darAltaBaja('${item.id}')">✓ Dar alta</button>` : ''}
+          <button class="btn btn-rojo" onclick="eliminarBaja('${item.id}')">🗑</button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(err) {
+    tbody.innerHTML = `<tr><td colspan="7" class="vacio">Error: ${err.message}</td></tr>`;
+  }
+}
+
+async function registrarBaja() {
+  const emp    = document.getElementById('baja-empleado').value;
+  const tipo   = document.getElementById('baja-tipo').value;
+  const inicio = document.getElementById('baja-inicio').value;
+  const fin    = document.getElementById('baja-fin').value;
+  const obs    = document.getElementById('baja-obs').value.trim();
+  if (!emp)    { toast('Selecciona un empleado', 'error'); return; }
+  if (!inicio) { toast('Indica la fecha de inicio', 'error'); return; }
+  const campos = {
+    EmpleadoID: emp, TipoAusencia: tipo,
+    FechaInicio: inicio + 'T00:00:00Z',
+    Estado: 'APROBADA', Motivo: obs || tipo
+  };
+  if (fin) campos.FechaFin = fin + 'T23:59:59Z';
+  try {
+    const token = await obtenerToken();
+    const resp = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Ausencias/items`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: campos })
+    });
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error?.message || resp.statusText); }
+    toast('✓ Baja registrada', 'ok');
+    document.getElementById('baja-inicio').value = '';
+    document.getElementById('baja-fin').value = '';
+    document.getElementById('baja-obs').value = '';
+    cargarBajas();
+  } catch(err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function darAltaBaja(itemId) {
+  const hoy = new Date().toISOString().slice(0,10);
+  const fecha = prompt('Fecha de alta médica (AAAA-MM-DD):', hoy);
+  if (!fecha) return;
+  try {
+    await graphPatch(`/sites/${siteId}/lists/Ausencias/items/${itemId}/fields`, { FechaFin: fecha + 'T23:59:59Z' });
+    toast('✓ Alta registrada', 'ok');
+    cargarBajas();
+  } catch(err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function eliminarBaja(itemId) {
+  if (!confirm('¿Eliminar este registro de baja?')) return;
+  try {
+    const token = await obtenerToken();
+    await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Ausencias/items/${itemId}`, {
+      method: 'DELETE', headers: { Authorization: 'Bearer ' + token }
+    });
+    toast('Baja eliminada', 'ok');
+    cargarBajas();
+  } catch(err) { toast('Error: ' + err.message, 'error'); }
+}
+
+// ════════════════════════════════════════
+// NÓMINAS
+// ════════════════════════════════════════
+async function cargarSelectsNominas() {
+  if (!empleadosCache.length) await cargarEmpleadosEnSelectores();
+}
+
+async function obtenerDriveId() {
+  if (window._driveId) return window._driveId;
+  const data = await graphCall(`/sites/${siteId}/drives`);
+  const drive = (data.value||[]).find(d => d.driveType==='documentLibrary') || data.value[0];
+  window._driveId = drive.id;
+  return drive.id;
+}
+
+async function subirYEnviarNomina() { await _subirNomina(true); }
+async function soloSubirNomina()    { await _subirNomina(false); }
+
+async function _subirNomina(enviarEmail) {
+  const emp     = document.getElementById('nomina-empleado').value;
+  const periodo = document.getElementById('nomina-periodo').value;
+  const archivo = document.getElementById('nomina-archivo').files[0];
+  const status  = document.getElementById('nomina-status');
+  if (!emp)     { toast('Selecciona un empleado', 'error'); return; }
+  if (!periodo) { toast('Indica el período', 'error'); return; }
+  if (!archivo) { toast('Selecciona un archivo PDF', 'error'); return; }
+  status.textContent = '⏳ Subiendo archivo...';
+  status.style.color = 'var(--gris-texto)';
+  try {
+    const driveId = await obtenerDriveId();
+    const token   = await obtenerToken();
+    const carpeta = 'Nominas/' + emp;
+    const nombre  = emp + '_' + periodo + '.pdf';
+    const r = await fetch(
+      `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${carpeta}/${nombre}:/content`,
+      { method:'PUT', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/pdf' }, body:archivo }
+    );
+    if (!r.ok) throw new Error('Error al subir el archivo');
+    status.textContent = '✓ Archivo guardado';
+    status.style.color = 'var(--verde)';
+
+    if (enviarEmail) {
+      const empData  = empleadosCache.find(e => e.fields.Title === emp);
+      const emailDest = empData?.fields?.Email || empData?.fields?.EmailAddress || '';
+      if (!emailDest) { toast('Nómina subida — el empleado no tiene email registrado', 'error'); return; }
+      status.textContent = '⏳ Enviando email a ' + emailDest + '...';
+      const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      const [anyo,mes] = periodo.split('-');
+      const periodoTexto = meses[parseInt(mes)-1] + ' ' + anyo;
+      const base64 = await new Promise((res,rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result.split(',')[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(archivo);
+      });
+      const mailBody = {
+        message: {
+          subject: 'Nómina ' + periodoTexto + ' — GESIOS del Levante',
+          body: { contentType:'HTML', content:`<p>Estimado/a ${emp},</p><p>Adjunto encontrarás tu nómina de <strong>${periodoTexto}</strong>.</p><p>Atentamente,<br><strong>GESIOS del Levante S.L.</strong></p>` },
+          toRecipients: [{ emailAddress:{ address:emailDest, name:emp } }],
+          attachments: [{ '@odata.type':'#microsoft.graph.fileAttachment', name:nombre, contentType:'application/pdf', contentBytes:base64 }]
+        },
+        saveToSentItems: true
+      };
+      const mailResp = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+        method:'POST', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
+        body: JSON.stringify(mailBody)
+      });
+      if (!mailResp.ok) { const e=await mailResp.json().catch(()=>({})); throw new Error('Email no enviado: '+(e.error?.message||mailResp.statusText)); }
+      status.textContent = '✓ Nómina enviada a ' + emailDest;
+      status.style.color = 'var(--verde)';
+      toast('✓ Nómina enviada a ' + emp, 'ok');
+    } else {
+      toast('✓ Nómina guardada', 'ok');
+    }
+    document.getElementById('nomina-archivo').value = '';
+    cargarNominas();
+  } catch(err) {
+    status.textContent = '✗ ' + err.message;
+    status.style.color = 'var(--rojo)';
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+async function cargarNominas() {
+  const tbody = document.getElementById('tabla-nominas');
+  tbody.innerHTML = '<tr><td colspan="4" class="cargando"><span class="spinner"></span> Cargando...</td></tr>';
+  try {
+    const driveId = await obtenerDriveId();
+    const token   = await obtenerToken();
+    const r = await fetch(
+      `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/Nominas:/children`,
+      { headers:{ Authorization:'Bearer '+token } }
+    );
+    if (!r.ok) { tbody.innerHTML='<tr><td colspan="4" class="vacio">No hay nóminas subidas todavía</td></tr>'; return; }
+    const empCarpetas = (await r.json()).value || [];
+    const rows = [];
+    for (const carpeta of empCarpetas) {
+      if (!carpeta.folder) continue;
+      const r2 = await fetch(
+        `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${carpeta.id}/children`,
+        { headers:{ Authorization:'Bearer '+token } }
+      );
+      const archivos = ((await r2.json()).value || []);
+      archivos.forEach(f => {
+        const match = f.name.match(/_(\d{4}-\d{2})\.pdf$/i);
+        rows.push({ emp:carpeta.name, periodo:match?match[1]:f.name, fecha:f.lastModifiedDateTime?.slice(0,10)||'—', url:f.webUrl, nombre:f.name });
+      });
+    }
+    if (!rows.length) { tbody.innerHTML='<tr><td colspan="4" class="vacio">No hay nóminas subidas todavía</td></tr>'; return; }
+    rows.sort((a,b)=>b.periodo.localeCompare(a.periodo));
+    tbody.innerHTML = rows.map(r=>`<tr>
+      <td><strong>${r.emp}</strong></td><td>${r.periodo}</td><td>${r.fecha}</td>
+      <td><a href="${r.url}" target="_blank" style="color:var(--azul)">📄 ${r.nombre}</a></td>
+    </tr>`).join('');
+  } catch(err) {
+    tbody.innerHTML = `<tr><td colspan="4" class="vacio">Error: ${err.message}</td></tr>`;
+  }
+}
+
+// ════════════════════════════════════════
+// CALENDARIO DE AUSENCIAS
+// ════════════════════════════════════════
+async function renderCalendario() {
+  const wrap = document.getElementById('calendario-wrap');
+  wrap.innerHTML = '<div class="cargando"><span class="spinner"></span> Cargando...</div>';
+  const mes  = parseInt(document.getElementById('cal-mes').value);
+  const anyo = parseInt(document.getElementById('cal-anyo').value);
+  const primerDia = new Date(anyo, mes, 1);
+  const ultimoDia = new Date(anyo, mes+1, 0);
+  const desde = primerDia.toISOString().slice(0,10);
+  const hasta  = ultimoDia.toISOString().slice(0,10);
+  try {
+    const data = await graphCall(
+      `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/FechaFin ge '${desde}T00:00:00Z' and fields/FechaInicio le '${hasta}T23:59:59Z'`
+    );
+    const ausencias = data.value || [];
+    const mapa = {};
+    ausencias.forEach(item => {
+      const f = item.fields;
+      const fi = new Date(f.FechaInicio);
+      const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(fi);
+      for (let d=new Date(fi); d<=ff; d.setDate(d.getDate()+1)) {
+        const key = d.toISOString().slice(0,10);
+        if (!mapa[key]) mapa[key]=[];
+        mapa[key].push({ emp:f.EmpleadoID||'—', tipo:f.TipoAusencia||'Otros' });
+      }
+    });
+    const hoy = new Date().toISOString().slice(0,10);
+    const dias = ['L','M','X','J','V','S','D'];
+    let html = '<div class="cal-grid">';
+    dias.forEach(d => { html += `<div class="cal-header-day">${d}</div>`; });
+    const offset = (primerDia.getDay()+6)%7;
+    for (let i=0;i<offset;i++) {
+      const prev = new Date(anyo,mes,-offset+i+1);
+      html += `<div class="cal-day otro-mes"><div class="cal-num" style="color:#9ca3af">${prev.getDate()}</div></div>`;
+    }
+    for (let dia=1;dia<=ultimoDia.getDate();dia++) {
+      const key = anyo+'-'+String(mes+1).padStart(2,'0')+'-'+String(dia).padStart(2,'0');
+      const esHoy = key===hoy;
+      const items = mapa[key]||[];
+      const chips = items.slice(0,3).map(a => {
+        let cls='otros';
+        if (a.tipo==='Vacaciones') cls='vacaciones';
+        else if (a.tipo==='Permiso médico') cls='permiso';
+        else if (a.tipo==='Baja médica'||a.tipo==='Baja laboral') cls='baja';
+        else if (a.tipo==='Compensación de horas'||a.tipo==='Asuntos propios') cls='comp';
+        return `<span class="cal-chip ${cls}" title="${a.emp} — ${a.tipo}">${a.emp.split(' ')[0]}</span>`;
+      }).join('');
+      const mas = items.length>3 ? `<span style="font-size:10px;color:var(--gris-texto)">+${items.length-3} más</span>` : '';
+      html += `<div class="cal-day${esHoy?' hoy':''}"><div class="cal-num">${dia}</div>${chips}${mas}</div>`;
+    }
+    const totalCeldas = offset+ultimoDia.getDate();
+    const restantes = (7-(totalCeldas%7))%7;
+    for (let i=1;i<=restantes;i++) {
+      html += `<div class="cal-day otro-mes"><div class="cal-num" style="color:#9ca3af">${i}</div></div>`;
+    }
+    html += '</div>';
+    const mesesN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    wrap.innerHTML = `<h3 style="margin-bottom:10px;color:var(--azul)">${mesesN[mes]} ${anyo}</h3>`+html;
+  } catch(err) {
+    wrap.innerHTML = `<div class="vacio">Error: ${err.message}</div>`;
+  }
+}
+
+// ════════════════════════════════════════
+// FICHAR POR EMPLEADO (admin)
+// ════════════════════════════════════════
+function iniciarFichajeAdmin() {
+  if (!empleadosCache.length) cargarEmpleadosEnSelectores();
+  const ahora = new Date();
+  document.getElementById('fadmin-fecha').value = ahora.toISOString().slice(0,10);
+  document.getElementById('fadmin-hora').value  = ahora.toTimeString().slice(0,5);
+}
+
+async function ficharPorEmpleado() {
+  const emp   = document.getElementById('fadmin-empleado').value;
+  const tipo  = document.querySelector('input[name="fadmin-tipo"]:checked').value;
+  const fecha = document.getElementById('fadmin-fecha').value;
+  const hora  = document.getElementById('fadmin-hora').value;
+  const obs   = document.getElementById('fadmin-obs').value.trim();
+  if (!emp)   { toast('Selecciona un empleado', 'error'); return; }
+  if (!fecha) { toast('Indica la fecha', 'error'); return; }
+  if (!hora)  { toast('Indica la hora', 'error'); return; }
+  const timestamp = new Date(fecha + 'T' + hora + ':00').toISOString();
+  try {
+    const token = await obtenerToken();
+    const resp = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Fichajes/items`, {
+      method: 'POST',
+      headers: { Authorization:'Bearer '+token, 'Content-Type':'application/json' },
+      body: JSON.stringify({ fields: { EmpleadoID:emp, TipoFichaje:tipo, Timestamp:timestamp, Localizacion:obs||'Registro manual admin' } })
+    });
+    if (!resp.ok) { const e=await resp.json(); throw new Error(e.error?.message||resp.statusText); }
+    toast('✓ Fichaje '+tipo+' registrado para '+emp, 'ok');
+    const ahora=new Date();
+    document.getElementById('fadmin-hora').value=ahora.toTimeString().slice(0,5);
+    document.getElementById('fadmin-obs').value='';
+  } catch(err) { toast('Error: '+err.message, 'error'); }
 }
 
 </script>
