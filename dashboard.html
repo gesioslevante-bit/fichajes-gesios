@@ -2190,17 +2190,20 @@ async function _subirNomina(enviarEmail) {
       const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
       const [anyo,mes] = periodo.split('-');
       const periodoTexto = meses[parseInt(mes)-1] + ' ' + anyo;
-      // Archivo ya subido a SharePoint — enlace en el email
       // Envío con EmailJS
-      emailjs.init('iUrq-Rsyh6OOSwFjI');
-      const mailResult = await emailjs.send('service_mlqx3mh', 'template_67qy8pk', {
-        empleado:  emp,
-        periodo:   periodoTexto,
-        to_email:  emailDest,
-        to_name:   emp,
-        message:   'Tu nómina de ' + periodoTexto + ' ha sido guardada. Puedes pedirla a administración si la necesitas en papel.'
-      });
-      if (mailResult.status !== 200) throw new Error('Email no enviado: ' + mailResult.text);
+      status.textContent = '⏳ Enviando email...';
+      try {
+        emailjs.init('iUrq-Rsyh6OOSwFjI');
+        await emailjs.send('service_mlqx3mh', 'template_67qy8pk', {
+          empleado:  emp,
+          periodo:   periodoTexto,
+          to_email:  emailDest,
+          to_name:   emp,
+          message:   'Tu nómina de ' + periodoTexto + ' ha sido guardada. Puedes consultarla en la sección Nóminas de la app.'
+        });
+      } catch(emailErr) {
+        throw new Error('Email no enviado: ' + (emailErr?.text || emailErr?.message || JSON.stringify(emailErr)));
+      }
       status.textContent = '✓ Nómina enviada a ' + emailDest;
       status.style.color = 'var(--verde)';
       toast('✓ Nómina enviada a ' + emp, 'ok');
