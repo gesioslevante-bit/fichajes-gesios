@@ -1598,7 +1598,7 @@ function generarCSVFichajes(items, empleadosCache, compensaciones) {
         const jornadaH = jornadaMap[j.emp] || 8;
         const umbral = jornadaH + 0.25; // 15 min de margen
         horasTrabajadas = diffH.toFixed(2);
-        horasExtras = diffH > umbral ? (diffH - umbral).toFixed(2) : '0.00'; // descuenta los 15 min de cortesía
+        horasExtras = diffH > umbral ? (diffH - jornadaH).toFixed(2) : '0.00'; // umbral activa el cómputo, extras = tiempo real - jornada
       }
 
       const fecha = new Date(j.dia).toLocaleDateString('es-ES');
@@ -1746,8 +1746,9 @@ async function cargarControlHoras() {
         if (minutosJornada <= margenMin) {
           horasOrdinarias += Math.min(minutosJornada, jornadaMin) / 60;
         } else {
+          // margenMin es el umbral de activación; las extras se cuentan desde jornadaMin
           horasOrdinarias += jornadaDiaria;
-          horasExtra += (minutosJornada - margenMin) / 60;
+          horasExtra += (minutosJornada - jornadaMin) / 60;
         }
       });
       return { horasOrdinarias, horasExtra };
@@ -1989,7 +1990,7 @@ async function exportarPDF() {
         const diffH = diffMs / 3600000;
         horas = diffH.toFixed(2) + 'h';
         const umbral = jornadaH + 0.25;
-        extras = diffH > umbral ? (diffH - umbral).toFixed(2) + 'h' : '0.00h'; // descuenta los 15 min de cortesía
+        extras = diffH > umbral ? (diffH - jornadaH).toFixed(2) + 'h' : '0.00h'; // umbral activa el cómputo, extras = tiempo real - jornada
       }
       return [j.emp, nif, j.dia, entrada, salida, horas, extras];
     });
