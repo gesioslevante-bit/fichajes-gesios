@@ -2204,7 +2204,7 @@ async function _subirNomina(enviarEmail) {
         },
         saveToSentItems: true
       };
-      const mailResp = await fetch('https://graph.microsoft.com/v1.0/users/admin@gesiolevante.onmicrosoft.com/sendMail', {
+      const mailResp = await fetch('https://graph.microsoft.com/v1.0/users/office@gesiolevante.onmicrosoft.com/sendMail', {
         method:'POST', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
         body: JSON.stringify(mailBody)
       });
