@@ -342,6 +342,12 @@ tbody tr:hover { background: var(--gris-fondo); }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script>
+    // Inicializar EmailJS en cuanto carga el SDK
+    document.addEventListener('DOMContentLoaded', function() {
+      emailjs.init({ publicKey: 'iUrq-Rsyh6OOSwFjI' });
+    });
+  </script>
 </head>
 <body>
 
@@ -2193,7 +2199,6 @@ async function _subirNomina(enviarEmail) {
       // Envío con EmailJS
       status.textContent = '⏳ Enviando email...';
       try {
-        emailjs.init('iUrq-Rsyh6OOSwFjI');
         await emailjs.send('service_mlqx3mh', 'template_67qy8pk', {
           empleado:  emp,
           periodo:   periodoTexto,
