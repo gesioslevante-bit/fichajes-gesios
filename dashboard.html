@@ -2053,13 +2053,24 @@ async function exportarPDF() {
       return [j.emp, nif, j.dia, entrada, salida, horas, extras];
     });
 
-    // Ordenar por fecha y luego empleado
-    rows.sort((a,b) => (a[2]+a[0]).localeCompare(b[2]+b[0]));
+    // Ordenar por empleado → fecha
+    rows.sort((a,b) => {
+      if (a[0] !== b[0]) return a[0].localeCompare(b[0]);
+      return a[2].localeCompare(b[2]);
+    });
 
-    // Agrupar por fecha: insertar fila separadora cuando cambia la fecha
+    // Agrupar por empleado (cabecera azul oscuro) y fecha (cabecera azul claro)
     const rowsConGrupos = [];
+    let empActualPDF = null;
     let fechaActual = null;
     rows.forEach(r => {
+      // Cabecera de empleado
+      if (r[0] !== empActualPDF) {
+        rowsConGrupos.push([{ content: '👤 ' + r[0], colSpan: 7, styles: { fillColor: [26, 86, 160], fontStyle: 'bold', textColor: 255, fontSize: 9 } }]);
+        empActualPDF = r[0];
+        fechaActual = null;
+      }
+      // Cabecera de fecha
       const fechaRow = new Date(r[2]).toLocaleDateString('es-ES', {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
       if (r[2] !== fechaActual) {
         rowsConGrupos.push([{ content: fechaRow, colSpan: 7, styles: { fillColor: [230, 238, 255], fontStyle: 'bold', textColor: [26,86,160], fontSize: 8 } }]);
