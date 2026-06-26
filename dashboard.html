@@ -1480,17 +1480,75 @@ async function exportarITSS() {
       else jornadas[key].salidas.push(campos.Timestamp);
     });
 
-    Object.values(jornadas).forEach(j => {
+    // Ordenar jornadas por empleado → mes → día
+    const jornadasOrdenadas = Object.values(jornadas).sort((a, b) => {
+      if (a.emp !== b.emp) return a.emp.localeCompare(b.emp);
+      return a.dia.localeCompare(b.dia);
+    });
+
+    const mesesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    let empActual = null;
+    let mesActual = null;
+    let horasMes = 0;
+    let diasMes = 0;
+
+    jornadasOrdenadas.forEach((j, idx) => {
       const empDatos = empMap[j.emp] || {};
       const nif = empDatos.NIF || '—';
+      const mesKey = j.dia.slice(0, 7); // YYYY-MM
+      const [anyoN, mesN] = mesKey.split('-');
+      const nombreMes = mesesNombres[parseInt(mesN) - 1] + ' ' + anyoN;
+
+      // Cabecera de nuevo empleado
+      if (j.emp !== empActual) {
+        if (empActual !== null) {
+          // Cierre resumen mes anterior
+          csv += `;;;;;TOTAL ${mesesNombres[parseInt(mesActual.split('-')[1])-1].toUpperCase()} ${mesActual.split('-')[0]};;;${horasMes.toFixed(2)}\n`;
+          csv += `\n`;
+          // Cierre resumen empleado anterior
+          csv += `;;;;;FIN EMPLEADO: ${empActual};;;\n`;
+          csv += `\n`;
+        }
+        empActual = j.emp;
+        mesActual = null;
+        horasMes = 0;
+        diasMes = 0;
+        csv += `;;;;;;;;;;\n`;
+        csv += `EMPLEADO: ${j.emp};NIF: ${nif};;;;;;;;\n`;
+        csv += `${empresa};${cif};${convenio};EMPLEADO;NIF;FECHA;HORA_ENTRADA;HORA_SALIDA;HORAS_JORNADA\n`;
+      }
+
+      // Cabecera de nuevo mes
+      if (mesKey !== mesActual) {
+        if (mesActual !== null) {
+          csv += `;;;;;TOTAL ${mesesNombres[parseInt(mesActual.split('-')[1])-1].toUpperCase()} ${mesActual.split('-')[0]};;;${horasMes.toFixed(2)}\n`;
+          csv += `\n`;
+          horasMes = 0;
+          diasMes = 0;
+        }
+        mesActual = mesKey;
+        csv += `;;;;;--- ${nombreMes.toUpperCase()} ---;;;\n`;
+      }
+
       const entrada = j.entradas[0] ? new Date(j.entradas[0]).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '—';
       const salida  = j.salidas[j.salidas.length-1] ? new Date(j.salidas[j.salidas.length-1]).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '—';
-      let horas = '—';
+      let horas = 0;
       if (j.entradas[0] && j.salidas.length) {
         const diffMs = new Date(j.salidas[j.salidas.length-1]) - new Date(j.entradas[0]);
-        horas = (diffMs / 3600000).toFixed(2);
+        horas = diffMs / 3600000;
+        horasMes += horas;
+        diasMes++;
       }
-      csv += `${empresa};${cif};${convenio};${j.emp};${nif};${j.dia};${entrada};${salida};${horas}\n`;
+      const horasStr = horas > 0 ? horas.toFixed(2) : '—';
+      csv += `${empresa};${cif};${convenio};${j.emp};${nif};${j.dia};${entrada};${salida};${horasStr}\n`;
+
+      // Si es el último registro, cerrar mes y empleado
+      if (idx === jornadasOrdenadas.length - 1) {
+        csv += `;;;;;TOTAL ${mesesNombres[parseInt(mesActual.split('-')[1])-1].toUpperCase()} ${mesActual.split('-')[0]};;;${horasMes.toFixed(2)}\n`;
+        csv += `\n`;
+        csv += `;;;;;FIN EMPLEADO: ${empActual};;;\n`;
+      }
     });
 
     descargarCSV(csv, `ITSS_${desde}_${hasta}${emp ? '_' + emp.replace(/ /g,'_') : ''}.csv`);
