@@ -700,8 +700,8 @@ tbody tr:hover { background: var(--gris-fondo); }
         </div>
         <div class="tabla-wrap">
           <table>
-            <thead><tr><th>Empleado</th><th>Período</th><th>Fecha subida</th><th>Archivo</th></tr></thead>
-            <tbody id="tabla-nominas"><tr><td colspan="4" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
+            <thead><tr><th>Empleado</th><th>Período</th><th>Fecha subida</th><th>Archivo</th><th></th></tr></thead>
+            <tbody id="tabla-nominas"><tr><td colspan="5" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -864,8 +864,8 @@ tbody tr:hover { background: var(--gris-fondo); }
         </div>
         <div class="tabla-wrap">
           <table>
-            <thead><tr><th>Empleado</th><th>Período</th><th>Fecha subida</th><th>Archivo</th></tr></thead>
-            <tbody id="tabla-nominas"><tr><td colspan="4" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
+            <thead><tr><th>Empleado</th><th>Período</th><th>Fecha subida</th><th>Archivo</th><th></th></tr></thead>
+            <tbody id="tabla-nominas"><tr><td colspan="5" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1598,7 +1598,7 @@ function generarCSVFichajes(items, empleadosCache, compensaciones) {
         const jornadaH = jornadaMap[j.emp] || 8;
         const umbral = jornadaH + 0.25; // 15 min de margen
         horasTrabajadas = diffH.toFixed(2);
-        horasExtras = diffH > umbral ? (diffH - jornadaH).toFixed(2) : '0.00';
+        horasExtras = diffH > umbral ? (diffH - umbral).toFixed(2) : '0.00'; // descuenta los 15 min de cortesía
       }
 
       const fecha = new Date(j.dia).toLocaleDateString('es-ES');
@@ -1989,7 +1989,7 @@ async function exportarPDF() {
         const diffH = diffMs / 3600000;
         horas = diffH.toFixed(2) + 'h';
         const umbral = jornadaH + 0.25;
-        extras = diffH > umbral ? (diffH - jornadaH).toFixed(2) + 'h' : '0.00h';
+        extras = diffH > umbral ? (diffH - umbral).toFixed(2) + 'h' : '0.00h'; // descuenta los 15 min de cortesía
       }
       return [j.emp, nif, j.dia, entrada, salida, horas, extras];
     });
@@ -1997,10 +1997,22 @@ async function exportarPDF() {
     // Ordenar por fecha y luego empleado
     rows.sort((a,b) => (a[2]+a[0]).localeCompare(b[2]+b[0]));
 
+    // Agrupar por fecha: insertar fila separadora cuando cambia la fecha
+    const rowsConGrupos = [];
+    let fechaActual = null;
+    rows.forEach(r => {
+      const fechaRow = new Date(r[2]).toLocaleDateString('es-ES', {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
+      if (r[2] !== fechaActual) {
+        rowsConGrupos.push([{ content: fechaRow, colSpan: 7, styles: { fillColor: [230, 238, 255], fontStyle: 'bold', textColor: [26,86,160], fontSize: 8 } }]);
+        fechaActual = r[2];
+      }
+      rowsConGrupos.push(r);
+    });
+
     doc.autoTable({
       startY: empFiltro ? 55 : 51,
       head: [['Empleado', 'NIF', 'Fecha', 'Entrada', 'Salida', 'Horas', 'Extras']],
-      body: rows,
+      body: rowsConGrupos,
       theme: 'grid',
       styles: { fontSize: 8.5, cellPadding: 2.5 },
       headStyles: { fillColor: [26, 86, 160], textColor: 255, fontStyle: 'bold' },
@@ -2230,7 +2242,7 @@ async function cargarNominas() {
       `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/Nominas:/children`,
       { headers:{ Authorization:'Bearer '+token } }
     );
-    if (!r.ok) { tbody.innerHTML='<tr><td colspan="4" class="vacio">No hay nóminas subidas todavía</td></tr>'; return; }
+    if (!r.ok) { tbody.innerHTML='<tr><td colspan="5" class="vacio">No hay nóminas subidas todavía</td></tr>'; return; }
     const empCarpetas = (await r.json()).value || [];
     const rows = [];
     for (const carpeta of empCarpetas) {
@@ -2242,7 +2254,7 @@ async function cargarNominas() {
       const archivos = ((await r2.json()).value || []);
       archivos.forEach(f => {
         const match = f.name.match(/_(\d{4}-\d{2})\.pdf$/i);
-        rows.push({ emp:carpeta.name, periodo:match?match[1]:f.name, fecha:f.lastModifiedDateTime?.slice(0,10)||'—', url:f.webUrl, nombre:f.name });
+        rows.push({ emp:carpeta.name, periodo:match?match[1]:f.name, fecha:f.lastModifiedDateTime?.slice(0,10)||'—', url:f.webUrl, nombre:f.name, itemId:f.id, driveId });
       });
     }
     if (!rows.length) { tbody.innerHTML='<tr><td colspan="4" class="vacio">No hay nóminas subidas todavía</td></tr>'; return; }
@@ -2250,9 +2262,29 @@ async function cargarNominas() {
     tbody.innerHTML = rows.map(r=>`<tr>
       <td><strong>${r.emp}</strong></td><td>${r.periodo}</td><td>${r.fecha}</td>
       <td><a href="${r.url}" target="_blank" style="color:var(--azul)">📄 ${r.nombre}</a></td>
+      <td><button class="btn btn-rojo" onclick="eliminarNomina('${r.driveId}','${r.itemId}')" title="Eliminar">🗑</button></td>
     </tr>`).join('');
   } catch(err) {
     tbody.innerHTML = `<tr><td colspan="4" class="vacio">Error: ${err.message}</td></tr>`;
+  }
+}
+
+// ════════════════════════════════════════
+// ELIMINAR NÓMINA
+// ════════════════════════════════════════
+async function eliminarNomina(driveId, itemId) {
+  if (!confirm('¿Eliminar esta nómina? Esta acción no se puede deshacer.')) return;
+  try {
+    const token = await obtenerToken();
+    const resp = await fetch(
+      `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}`,
+      { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!resp.ok && resp.status !== 204) throw new Error('Error al eliminar');
+    toast('✓ Nómina eliminada', 'ok');
+    cargarNominas();
+  } catch(err) {
+    toast('Error: ' + err.message, 'error');
   }
 }
 
