@@ -511,6 +511,45 @@
   }
 
   /* ── PANTALLA HISTORIAL ── */
+  #pantalla-nominas {
+    flex-direction: column;
+    padding: 0;
+    background: var(--fondo);
+  }
+  .nomina-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    border: 1px solid var(--gris-borde);
+  }
+  .nomina-periodo {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--texto);
+  }
+  .nomina-fecha {
+    font-size: 12px;
+    color: var(--gris-texto);
+    margin-top: 2px;
+  }
+  .nomina-btn {
+    background: var(--azul);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+  }
+
   #pantalla-historial {
     background: var(--gris-claro);
   }
@@ -791,6 +830,10 @@
       <span class="icono-menu">📊</span>
       <span class="label-menu">Historial</span>
     </button>
+    <button class="menu-item" onclick="navegar('nominas')">
+      <span class="icono-menu">💶</span>
+      <span class="label-menu">Nóminas</span>
+    </button>
   </nav>
 </div>
 
@@ -915,6 +958,21 @@
 
     <div style="margin-top:auto; padding-top:16px;">
       <button class="btn btn-principal" onclick="guardarEdicionAusencia()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PANTALLA: NÓMINAS
+══════════════════════════════════════════ -->
+<div id="pantalla-nominas" class="pantalla">
+  <div class="header-pantalla">
+    <button class="header-back" onclick="navegar('inicio')">← Inicio</button>
+    <h2 class="header-titulo">Mis nóminas</h2>
+  </div>
+  <div style="padding:16px">
+    <div id="nominas-lista">
+      <div class="cargando-texto">Cargando nóminas...</div>
     </div>
   </div>
 </div>
@@ -1702,6 +1760,10 @@ function navegar(destino) {
       mostrarPantalla('historial');
       cargarHistorial();
       break;
+    case 'nominas':
+      mostrarPantalla('nominas');
+      cargarMisNominas();
+      break;
   }
 }
 
@@ -1781,6 +1843,69 @@ async function init() {
     }
   } else {
     mostrarPantalla('ms-login');
+  }
+}
+
+// ══════════════════════════════════════════
+// NÓMINAS DEL EMPLEADO
+// ══════════════════════════════════════════
+async function cargarMisNominas() {
+  const lista = document.getElementById('nominas-lista');
+  lista.innerHTML = '<div class="cargando-texto">Cargando nóminas...</div>';
+
+  try {
+    const token = await obtenerToken();
+
+    // Obtener el drive del sitio
+    const drivesResp = await fetch(
+      'https://graph.microsoft.com/v1.0/sites/' + CONFIG.siteId + '/drives',
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    const drivesData = await drivesResp.json();
+    const drive = (drivesData.value || []).find(d => d.driveType === 'documentLibrary') || drivesData.value[0];
+    if (!drive) throw new Error('No se encontró la biblioteca de documentos');
+
+    // Buscar carpeta del empleado actual
+    const empleado = estado.empleado;
+    const carpetaResp = await fetch(
+      'https://graph.microsoft.com/v1.0/drives/' + drive.id + '/root:/Nominas/' + empleado + ':/children',
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+
+    if (!carpetaResp.ok) {
+      lista.innerHTML = '<div style="text-align:center;padding:32px;color:var(--gris-texto)">📄 No tienes nóminas disponibles todavía</div>';
+      return;
+    }
+
+    const archivos = ((await carpetaResp.json()).value || [])
+      .filter(f => f.name.endsWith('.pdf'))
+      .sort((a, b) => b.name.localeCompare(a.name));
+
+    if (!archivos.length) {
+      lista.innerHTML = '<div style="text-align:center;padding:32px;color:var(--gris-texto)">📄 No tienes nóminas disponibles todavía</div>';
+      return;
+    }
+
+    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    lista.innerHTML = archivos.map(f => {
+      const match = f.name.match(/_(\d{4})-(\d{2})\.pdf$/i);
+      let periodoTexto = f.name;
+      if (match) {
+        periodoTexto = meses[parseInt(match[2]) - 1] + ' ' + match[1];
+      }
+      const fecha = f.lastModifiedDateTime ? f.lastModifiedDateTime.slice(0, 10) : '';
+      return `<div class="nomina-card">
+        <div>
+          <div class="nomina-periodo">💶 ${periodoTexto}</div>
+          ${fecha ? '<div class="nomina-fecha">Subida el ' + fecha + '</div>' : ''}
+        </div>
+        <a href="${f.webUrl}" target="_blank" class="nomina-btn">⬇ Descargar</a>
+      </div>`;
+    }).join('');
+
+  } catch(err) {
+    lista.innerHTML = '<div style="text-align:center;padding:32px;color:var(--rojo)">Error: ' + err.message + '</div>';
   }
 }
 

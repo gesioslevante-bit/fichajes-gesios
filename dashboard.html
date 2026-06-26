@@ -341,6 +341,7 @@ tbody tr:hover { background: var(--gris-fondo); }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -688,7 +689,7 @@ tbody tr:hover { background: var(--gris-fondo); }
           <div style="grid-column:1/-1"><div id="nomina-status" style="font-size:13px;min-height:20px"></div></div>
         </div>
         <div style="padding:0 16px 12px;font-size:12px;color:var(--gris-texto)">
-          ⚠️ El envío usa el campo <strong>Email</strong> de la ficha del empleado. Asegúrate de que esté relleno.
+          ⚠️ El email notifica al empleado que su nómina está disponible. El PDF queda guardado en SharePoint. Asegúrate de que el empleado tiene <strong>Email</strong> en su ficha.
         </div>
       </div>
       <div class="card">
@@ -2189,26 +2190,17 @@ async function _subirNomina(enviarEmail) {
       const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
       const [anyo,mes] = periodo.split('-');
       const periodoTexto = meses[parseInt(mes)-1] + ' ' + anyo;
-      const base64 = await new Promise((res,rej) => {
-        const reader = new FileReader();
-        reader.onload = () => res(reader.result.split(',')[1]);
-        reader.onerror = rej;
-        reader.readAsDataURL(archivo);
+      // Archivo ya subido a SharePoint — enlace en el email
+      // Envío con EmailJS
+      emailjs.init('iUrq-Rsyh6OOSwFjI');
+      const mailResult = await emailjs.send('service_mlqx3mh', 'template_67qy8pk', {
+        empleado:  emp,
+        periodo:   periodoTexto,
+        to_email:  emailDest,
+        to_name:   emp,
+        message:   'Tu nómina de ' + periodoTexto + ' ha sido guardada. Puedes pedirla a administración si la necesitas en papel.'
       });
-      const mailBody = {
-        message: {
-          subject: 'Nómina ' + periodoTexto + ' — GESIOS del Levante',
-          body: { contentType:'HTML', content:`<p>Estimado/a ${emp},</p><p>Adjunto encontrarás tu nómina de <strong>${periodoTexto}</strong>.</p><p>Atentamente,<br><strong>GESIOS del Levante S.L.</strong></p>` },
-          toRecipients: [{ emailAddress:{ address:emailDest, name:emp } }],
-          attachments: [{ '@odata.type':'#microsoft.graph.fileAttachment', name:nombre, contentType:'application/pdf', contentBytes:base64 }]
-        },
-        saveToSentItems: true
-      };
-      const mailResp = await fetch('https://graph.microsoft.com/v1.0/users/office@gesiolevante.onmicrosoft.com/sendMail', {
-        method:'POST', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
-        body: JSON.stringify(mailBody)
-      });
-      if (!mailResp.ok) { const e=await mailResp.json().catch(()=>({})); throw new Error('Email no enviado: '+(e.error?.message||mailResp.statusText)); }
+      if (mailResult.status !== 200) throw new Error('Email no enviado: ' + mailResult.text);
       status.textContent = '✓ Nómina enviada a ' + emailDest;
       status.style.color = 'var(--verde)';
       toast('✓ Nómina enviada a ' + emp, 'ok');
