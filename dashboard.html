@@ -2105,16 +2105,46 @@ async function exportarPDF() {
       }
     });
 
-    // Resumen total horas y extras
-    const totalHoras = rows.reduce((acc, r) => acc + (parseFloat(r[5]) || 0), 0);
+    // Resumen por empleado + total general
+    // Calcular totales por empleado desde rows originales
+    const totalesPorEmp = {};
+    rows.forEach(r => {
+      const emp = r[0];
+      if (!totalesPorEmp[emp]) totalesPorEmp[emp] = { horas: 0, extras: 0 };
+      totalesPorEmp[emp].horas  += parseFloat(r[5]) || 0;
+      totalesPorEmp[emp].extras += parseFloat(r[6]) || 0;
+    });
+
+    const totalHoras   = rows.reduce((acc, r) => acc + (parseFloat(r[5]) || 0), 0);
     const totalExtrasB = rows.reduce((acc, r) => acc + (parseFloat(r[6]) || 0), 0);
     const totalCompensadas = Object.values(compMap).reduce((a, b) => a + b, 0);
     const extrasNetas = Math.max(0, totalExtrasB - totalCompensadas);
-    const finalY = doc.lastAutoTable.finalY + 6;
-    doc.setFontSize(10);
+
+    let finalY = doc.lastAutoTable.finalY + 8;
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
+
+    // Resumen por empleado
+    Object.entries(totalesPorEmp).forEach(([emp, t]) => {
+      const comp = compMap[emp] || 0;
+      const netas = Math.max(0, t.extras - comp);
+      doc.setTextColor(26, 86, 160);
+      let linea = `${emp}  —  Horas: ${t.horas.toFixed(2)}h  |  Extras: ${t.extras.toFixed(2)}h`;
+      if (comp > 0) linea += `  |  Comp: ${comp.toFixed(2)}h  |  Netas: ${netas.toFixed(2)}h`;
+      doc.text(linea, pageW - 12, finalY, { align: 'right' });
+      finalY += 6;
+    });
+
+    // Línea separadora
+    doc.setDrawColor(26, 86, 160);
+    doc.setLineWidth(0.3);
+    doc.line(pageW * 0.4, finalY - 2, pageW - 12, finalY - 2);
+    finalY += 2;
+
+    // Total general
+    doc.setFontSize(10);
     doc.setTextColor(26, 86, 160);
-    let resumenTexto = `Total horas: ${totalHoras.toFixed(2)}h  |  Extras brutas: ${totalExtrasB.toFixed(2)}h`;
+    let resumenTexto = `TOTAL  —  Horas: ${totalHoras.toFixed(2)}h  |  Extras brutas: ${totalExtrasB.toFixed(2)}h`;
     if (totalCompensadas > 0) resumenTexto += `  |  Compensadas: ${totalCompensadas.toFixed(2)}h  |  Extras netas: ${extrasNetas.toFixed(2)}h`;
     doc.text(resumenTexto, pageW - 12, finalY, { align: 'right' });
 
