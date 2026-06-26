@@ -2448,7 +2448,7 @@ async function ficharPorEmpleado() {
     const resp = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Fichajes/items`, {
       method: 'POST',
       headers: { Authorization:'Bearer '+token, 'Content-Type':'application/json' },
-      body: JSON.stringify({ fields: { EmpleadoID:emp, TipoFichaje:tipo, Timestamp:timestamp, Localizacion:obs||'Registro manual admin' } })
+      body: JSON.stringify({ fields: { EmpleadoID:emp, TipoFichaje:tipo, Timestamp:timestamp } })
     });
     if (!resp.ok) { const e=await resp.json(); throw new Error(e.error?.message||resp.statusText); }
     toast('✓ Fichaje '+tipo+' registrado para '+emp, 'ok');
