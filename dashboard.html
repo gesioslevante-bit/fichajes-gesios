@@ -2561,11 +2561,10 @@ async function exportarCalendarioPDF() {
     const ausencias = mapa[key] || [];
     let texto = String(diaActual);
     if (ausencias.length) {
-      texto += '
-' + ausencias.slice(0, 3).map(a => a.emp.split('_')[0] + ' (' + (a.tipo === 'Vacaciones' ? 'Vac' : a.tipo === 'Baja médica' ? 'Baja' : a.tipo === 'Baja laboral' ? 'B.Lab' : a.tipo === 'Permiso médico' ? 'Perm' : a.tipo === 'Compensación de horas' ? 'Comp' : 'Otro') + ')').join('
-');
-      if (ausencias.length > 3) texto += '
-+' + (ausencias.length - 3) + ' más';
+      const nl = String.fromCharCode(10);
+      const abrev = a => a.emp.split('_')[0] + ' (' + (a.tipo === 'Vacaciones' ? 'Vac' : a.tipo === 'Baja medica' ? 'Baja' : a.tipo === 'Baja laboral' ? 'B.Lab' : a.tipo === 'Permiso medico' ? 'Perm' : a.tipo === 'Compensacion de horas' ? 'Comp' : 'Otro') + ')';
+      texto += nl + ausencias.slice(0, 3).map(abrev).join(nl);
+      if (ausencias.length > 3) texto += nl + '+' + (ausencias.length - 3) + ' mas';
     }
     semana[posEnSemana] = texto;
     diaActual++;
