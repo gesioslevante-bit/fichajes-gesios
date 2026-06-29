@@ -1857,12 +1857,14 @@ async function cargarMisNominas() {
     const token = await obtenerToken();
 
     // Obtener el drive del sitio
+    const siteId = await obtenerSiteId();
     const drivesResp = await fetch(
-      'https://graph.microsoft.com/v1.0/sites/' + CONFIG.siteId + '/drives',
+      'https://graph.microsoft.com/v1.0/sites/' + siteId + '/drives',
       { headers: { Authorization: 'Bearer ' + token } }
     );
     const drivesData = await drivesResp.json();
-    const drive = (drivesData.value || []).find(d => d.driveType === 'documentLibrary') || drivesData.value[0];
+    const drives = drivesData.value || [];
+    const drive = drives.find(d => d.driveType === 'documentLibrary') || drives[0];
     if (!drive) throw new Error('No se encontró la biblioteca de documentos');
 
     // Buscar carpeta del empleado actual
