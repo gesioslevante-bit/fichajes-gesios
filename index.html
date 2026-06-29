@@ -1879,12 +1879,14 @@ async function cargarMisNominas() {
       return;
     }
 
-    const archivos = ((await carpetaResp.json()).value || [])
+    const carpetaData = await carpetaResp.json();
+    const todosArchivos = carpetaData.value || [];
+    const archivos = todosArchivos
       .filter(f => f.name.endsWith('.pdf'))
       .sort((a, b) => b.name.localeCompare(a.name));
 
     if (!archivos.length) {
-      lista.innerHTML = '<div style="text-align:center;padding:32px;color:var(--gris-texto)">📄 No tienes nóminas disponibles todavía</div>';
+      lista.innerHTML = '<div style="text-align:center;padding:32px;color:var(--gris-texto)">📄 No tienes nóminas disponibles todavía<br><small style=\"color:#999\">Archivos en carpeta: ' + todosArchivos.map(f=>f.name).join(', ') + ' (total: ' + todosArchivos.length + ')</small></div>';
       return;
     }
 
