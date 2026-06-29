@@ -1869,13 +1869,13 @@ async function cargarMisNominas() {
 
     // Buscar carpeta del empleado actual
     const empleado = estado.empleado;
-    const carpetaResp = await fetch(
-      'https://graph.microsoft.com/v1.0/drives/' + drive.id + '/root:/Documentos%20compartidos/Nominas/' + empleado + ':/children',
-      { headers: { Authorization: 'Bearer ' + token } }
-    );
+    const carpetaUrl = 'https://graph.microsoft.com/v1.0/drives/' + drive.id + '/root:/Documentos%20compartidos/Nominas/' + empleado + ':/children';
+    lista.innerHTML = '<div style="padding:8px;font-size:11px;color:#666">Buscando en: ' + carpetaUrl + '</div>';
+    const carpetaResp = await fetch(carpetaUrl, { headers: { Authorization: 'Bearer ' + token } });
 
     if (!carpetaResp.ok) {
-      lista.innerHTML = '<div style="text-align:center;padding:32px;color:var(--gris-texto)">📄 No tienes nóminas disponibles todavía</div>';
+      const errBody = await carpetaResp.text();
+      lista.innerHTML = '<div style="text-align:center;padding:32px;color:var(--rojo)">📄 Error ' + carpetaResp.status + ': ' + errBody + '</div>';
       return;
     }
 
