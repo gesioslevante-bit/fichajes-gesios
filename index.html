@@ -1870,7 +1870,7 @@ async function cargarMisNominas() {
     // Buscar carpeta del empleado actual
     const empleado = estado.empleado;
     const carpetaResp = await fetch(
-      'https://graph.microsoft.com/v1.0/drives/' + drive.id + '/root:/Nominas/' + empleado + ':/children',
+      'https://graph.microsoft.com/v1.0/drives/' + drive.id + '/root:/Documentos%20compartidos/Nominas/' + empleado + ':/children',
       { headers: { Authorization: 'Bearer ' + token } }
     );
 
