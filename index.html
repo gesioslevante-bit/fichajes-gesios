@@ -1907,7 +1907,7 @@ async function cargarMisNominas() {
     }).join('');
 
   } catch(err) {
-    lista.innerHTML = '<div style="text-align:center;padding:32px;color:var(--rojo)">Error: ' + err.message + '</div>';
+    lista.innerHTML = '<div style="text-align:center;padding:32px;color:var(--rojo)">Error: ' + err.message + '<br><small>' + (err.stack || '') + '</small></div>';
   }
 }
 
