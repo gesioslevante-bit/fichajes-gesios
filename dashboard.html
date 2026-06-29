@@ -2059,14 +2059,33 @@ async function exportarPDF() {
       return a[2].localeCompare(b[2]);
     });
 
+    // Calcular totales por empleado (necesario antes de construir la tabla)
+    const totalesPorEmp = {};
+    rows.forEach(r => {
+      const emp = r[0];
+      if (!totalesPorEmp[emp]) totalesPorEmp[emp] = { horas: 0, extras: 0 };
+      totalesPorEmp[emp].horas  += parseFloat(r[5]) || 0;
+      totalesPorEmp[emp].extras += parseFloat(r[6]) || 0;
+    });
+
     // Agrupar por empleado (cabecera azul oscuro) y fecha (cabecera azul claro)
     const rowsConGrupos = [];
     let empActualPDF = null;
     let fechaActual = null;
-    rows.forEach(r => {
+    rows.forEach((r, idx) => {
+      // Subtotal del empleado anterior antes de cambiar
+      if (r[0] !== empActualPDF && empActualPDF !== null) {
+        const t = totalesPorEmp[empActualPDF];
+        const comp = compMap[empActualPDF] || 0;
+        const netas = Math.max(0, t.extras - comp);
+        let subtotalTxt = `Subtotal ${empActualPDF}:  ${t.horas.toFixed(2)}h trabajadas  |  Extras: ${t.extras.toFixed(2)}h`;
+        if (comp > 0) subtotalTxt += `  |  Comp: ${comp.toFixed(2)}h  |  Netas: ${netas.toFixed(2)}h`;
+        rowsConGrupos.push([{ content: subtotalTxt, colSpan: 7, styles: { fillColor: [245, 248, 255], fontStyle: 'bold', textColor: [26,86,160], fontSize: 8, halign: 'right' } }]);
+        rowsConGrupos.push([{ content: '', colSpan: 7, styles: { cellPadding: 1, fillColor: 255 } }]);
+      }
       // Cabecera de empleado
       if (r[0] !== empActualPDF) {
-        rowsConGrupos.push([{ content: '👤 ' + r[0], colSpan: 7, styles: { fillColor: [26, 86, 160], fontStyle: 'bold', textColor: 255, fontSize: 9 } }]);
+        rowsConGrupos.push([{ content: r[0], colSpan: 7, styles: { fillColor: [26, 86, 160], fontStyle: 'bold', textColor: 255, fontSize: 9 } }]);
         empActualPDF = r[0];
         fechaActual = null;
       }
@@ -2077,6 +2096,15 @@ async function exportarPDF() {
         fechaActual = r[2];
       }
       rowsConGrupos.push(r);
+      // Subtotal del último empleado
+      if (idx === rows.length - 1) {
+        const t = totalesPorEmp[empActualPDF];
+        const comp = compMap[empActualPDF] || 0;
+        const netas = Math.max(0, t.extras - comp);
+        let subtotalTxt = `Subtotal ${empActualPDF}:  ${t.horas.toFixed(2)}h trabajadas  |  Extras: ${t.extras.toFixed(2)}h`;
+        if (comp > 0) subtotalTxt += `  |  Comp: ${comp.toFixed(2)}h  |  Netas: ${netas.toFixed(2)}h`;
+        rowsConGrupos.push([{ content: subtotalTxt, colSpan: 7, styles: { fillColor: [245, 248, 255], fontStyle: 'bold', textColor: [26,86,160], fontSize: 8, halign: 'right' } }]);
+      }
     });
 
     doc.autoTable({
@@ -2106,14 +2134,6 @@ async function exportarPDF() {
     });
 
     // Resumen por empleado + total general
-    // Calcular totales por empleado desde rows originales
-    const totalesPorEmp = {};
-    rows.forEach(r => {
-      const emp = r[0];
-      if (!totalesPorEmp[emp]) totalesPorEmp[emp] = { horas: 0, extras: 0 };
-      totalesPorEmp[emp].horas  += parseFloat(r[5]) || 0;
-      totalesPorEmp[emp].extras += parseFloat(r[6]) || 0;
-    });
 
     const totalHoras   = rows.reduce((acc, r) => acc + (parseFloat(r[5]) || 0), 0);
     const totalExtrasB = rows.reduce((acc, r) => acc + (parseFloat(r[6]) || 0), 0);
