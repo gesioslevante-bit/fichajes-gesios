@@ -890,6 +890,7 @@ tbody tr:hover { background: var(--gris-fondo); }
           <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
         </select>
         <button class="btn btn-primario" onclick="renderCalendario()">🔍 Ver</button>
+        <button class="btn btn-verde" onclick="exportarCalendarioPDF()">📄 Exportar PDF</button>
       </div>
       <div id="calendario-wrap"></div>
       <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px">
@@ -2471,6 +2472,159 @@ async function renderCalendario() {
   } catch(err) {
     wrap.innerHTML = `<div class="vacio">Error: ${err.message}</div>`;
   }
+}
+
+// ════════════════════════════════════════
+// EXPORTAR CALENDARIO PDF
+// ════════════════════════════════════════
+async function exportarCalendarioPDF() {
+  const wrap = document.getElementById('calendario-wrap');
+  if (!wrap || !wrap.querySelector('.cal-grid')) {
+    toast('Primero carga el calendario', 'error');
+    return;
+  }
+
+  const mes  = parseInt(document.getElementById('cal-mes').value);
+  const anyo = parseInt(document.getElementById('cal-anyo').value);
+  const mesesN = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const nombreMes = mesesN[mes] + ' ' + anyo;
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+
+  // Cabecera
+  doc.setFillColor(26, 86, 160);
+  doc.rect(0, 0, pageW, 18, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('GESIOS DEL LEVANTE S.L.', 12, 11);
+  doc.setFontSize(10);
+  doc.text('Calendario de Ausencias — ' + nombreMes, pageW / 2, 11, { align: 'center' });
+  doc.setFontSize(9);
+  doc.text('Generado: ' + new Date().toLocaleString('es-ES'), pageW - 12, 11, { align: 'right' });
+
+  // Obtener datos del mapa actual
+  const primerDia = new Date(anyo, mes, 1);
+  const ultimoDia = new Date(anyo, mes + 1, 0);
+  const desde = primerDia.toISOString().slice(0, 10);
+  const hasta  = ultimoDia.toISOString().slice(0, 10);
+
+  let mapa = {};
+  try {
+    const data = await graphCall(
+      `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/FechaFin ge '${desde}T00:00:00Z' and fields/FechaInicio le '${hasta}T23:59:59Z'`
+    );
+    (data.value || []).forEach(item => {
+      const f = item.fields;
+      const fi = new Date(f.FechaInicio);
+      const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(fi);
+      for (let d = new Date(fi); d <= ff; d.setDate(d.getDate() + 1)) {
+        const key = d.toISOString().slice(0, 10);
+        if (!mapa[key]) mapa[key] = [];
+        mapa[key].push({ emp: f.EmpleadoID || '—', tipo: f.TipoAusencia || 'Otros' });
+      }
+    });
+  } catch(e) { /* continuar con mapa vacío */ }
+
+  // Tabla del calendario
+  const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  const colores = {
+    'Vacaciones':           [59, 130, 246],
+    'Permiso médico':       [245, 158, 11],
+    'Baja médica':          [239, 68, 68],
+    'Baja laboral':         [239, 68, 68],
+    'Compensación de horas':[139, 92, 246],
+    'Asuntos propios':      [139, 92, 246],
+    'Otros':                [107, 114, 128]
+  };
+
+  const offset = (primerDia.getDay() + 6) % 7;
+  const totalDias = ultimoDia.getDate();
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  // Construir cabecera de tabla
+  const head = [diasSemana];
+
+  // Construir filas por semanas
+  const body = [];
+  let semana = Array(7).fill('');
+  let diaActual = 1;
+
+  // Celdas vacías del inicio
+  for (let i = 0; i < offset; i++) semana[i] = '';
+
+  for (let pos = offset; pos < offset + totalDias; pos++) {
+    const posEnSemana = pos % 7;
+    const key = anyo + '-' + String(mes + 1).padStart(2, '0') + '-' + String(diaActual).padStart(2, '0');
+    const ausencias = mapa[key] || [];
+    let texto = String(diaActual);
+    if (ausencias.length) {
+      texto += '
+' + ausencias.slice(0, 3).map(a => a.emp.split('_')[0] + ' (' + (a.tipo === 'Vacaciones' ? 'Vac' : a.tipo === 'Baja médica' ? 'Baja' : a.tipo === 'Baja laboral' ? 'B.Lab' : a.tipo === 'Permiso médico' ? 'Perm' : a.tipo === 'Compensación de horas' ? 'Comp' : 'Otro') + ')').join('
+');
+      if (ausencias.length > 3) texto += '
++' + (ausencias.length - 3) + ' más';
+    }
+    semana[posEnSemana] = texto;
+    diaActual++;
+
+    if (posEnSemana === 6 || diaActual > totalDias) {
+      body.push([...semana]);
+      semana = Array(7).fill('');
+    }
+  }
+
+  doc.autoTable({
+    startY: 22,
+    head: head,
+    body: body,
+    theme: 'grid',
+    styles: { fontSize: 7, cellPadding: 2, valign: 'top', minCellHeight: 18 },
+    headStyles: { fillColor: [26, 86, 160], textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 8 },
+    columnStyles: {
+      0: { cellWidth: 'auto' }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 'auto' },
+      3: { cellWidth: 'auto' }, 4: { cellWidth: 'auto' }, 5: { cellWidth: 'auto' }, 6: { cellWidth: 'auto' }
+    },
+    didParseCell: function(data) {
+      if (data.section === 'body' && data.cell.raw) {
+        const text = data.cell.raw;
+        const dayNum = parseInt(text);
+        if (dayNum) {
+          const key = anyo + '-' + String(mes + 1).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
+          if (key === hoy) {
+            data.cell.styles.fillColor = [255, 251, 230];
+          }
+          if (mapa[key] && mapa[key].length) {
+            data.cell.styles.fillColor = [240, 247, 255];
+          }
+        }
+      }
+    }
+  });
+
+  // Leyenda
+  const legendY = doc.lastAutoTable.finalY + 6;
+  doc.setFontSize(8);
+  const leyenda = [
+    { label: 'Vacaciones', color: [59, 130, 246] },
+    { label: 'Permiso médico', color: [245, 158, 11] },
+    { label: 'Baja', color: [239, 68, 68] },
+    { label: 'Comp./Asuntos', color: [139, 92, 246] },
+    { label: 'Otros', color: [107, 114, 128] }
+  ];
+  let lx = 12;
+  leyenda.forEach(l => {
+    doc.setFillColor(...l.color);
+    doc.rect(lx, legendY, 4, 4, 'F');
+    doc.setTextColor(50, 50, 50);
+    doc.text(l.label, lx + 6, legendY + 3.5);
+    lx += 35;
+  });
+
+  doc.save('Calendario_Ausencias_' + nombreMes.replace(' ', '_') + '.pdf');
+  toast('✓ Calendario exportado', 'ok');
 }
 
 // ════════════════════════════════════════
