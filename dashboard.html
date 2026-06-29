@@ -341,7 +341,7 @@ tbody tr:hover { background: var(--gris-fondo); }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 
 </head>
 <body>
@@ -2327,7 +2327,7 @@ async function _subirNomina(enviarEmail) {
       // Envío con EmailJS
       status.textContent = '⏳ Enviando email...';
       try {
-        emailjs.init({ publicKey: 'iUrq-Rsyh6OOSwFjI' });
+        emailjs.init('iUrq-Rsyh6OOSwFjI');
         await emailjs.send('service_a4jm8si', 'template_67qy8pk', {
           empleado:  emp,
           periodo:   periodoTexto,
