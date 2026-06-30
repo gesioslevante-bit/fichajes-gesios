@@ -1872,8 +1872,11 @@ async function cargarMisNominas() {
     const carpetaResp = await fetch(carpetaUrl, { headers: { Authorization: 'Bearer ' + token } });
 
     if (!carpetaResp.ok) {
-      const errBody = await carpetaResp.text();
-      lista.innerHTML = '<div style="text-align:center;padding:32px;color:var(--rojo)">📄 Error ' + carpetaResp.status + ': ' + errBody + '</div>';
+      // Debug: listar la raíz del drive para ver qué carpetas existen realmente
+      const raizResp = await fetch('https://graph.microsoft.com/v1.0/drives/' + drive.id + '/root/children', { headers: { Authorization: 'Bearer ' + token } });
+      const raizData = await raizResp.json().catch(()=>({value:[]}));
+      const nombresRaiz = (raizData.value||[]).map(f=>f.name).join(', ');
+      lista.innerHTML = '<div style="text-align:center;padding:32px;color:var(--rojo)">📄 No se encontró Nominas/' + empleado + '<br><small>Drive: ' + drive.name + ' (' + drive.id + ')</small><br><small>Carpetas en raíz: ' + nombresRaiz + '</small></div>';
       return;
     }
 
