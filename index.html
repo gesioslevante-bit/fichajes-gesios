@@ -1867,7 +1867,7 @@ async function cargarMisNominas() {
     const drive = drives.find(d => d.name === 'Documentos compartidos') || drives.find(d => d.name === 'Documents') || drives.find(d => d.driveType === 'documentLibrary') || drives[0];
     if (!drive) throw new Error('No se encontró la biblioteca. Drives: ' + drives.map(d=>d.name).join(', '));
 
-    const empleado = estado.empleado;
+    const empleado = estado.empleado.Title || estado.empleado.Nombre || estado.empleado;
     const carpetaUrl = 'https://graph.microsoft.com/v1.0/drives/' + drive.id + '/root:/Nominas/' + empleado + ':/children';
     const carpetaResp = await fetch(carpetaUrl, { headers: { Authorization: 'Bearer ' + token } });
 
