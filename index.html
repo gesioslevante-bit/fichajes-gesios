@@ -1856,21 +1856,10 @@ async function cargarMisNominas() {
   try {
     const token = await obtenerToken();
 
-    // Obtener el drive del sitio
+    // Usar el drive por defecto del sitio (igual que Justificantes)
     const siteId = await obtenerSiteId();
-    const drivesResp = await fetch(
-      'https://graph.microsoft.com/v1.0/sites/' + siteId + '/drives',
-      { headers: { Authorization: 'Bearer ' + token } }
-    );
-    const drivesData = await drivesResp.json();
-    const drives = drivesData.value || [];
-    const drive = drives.find(d => d.driveType === 'documentLibrary') || drives[0];
-    if (!drive) throw new Error('No se encontró la biblioteca de documentos');
-
-    // Buscar carpeta del empleado actual
     const empleado = estado.empleado;
-    const carpetaUrl = 'https://graph.microsoft.com/v1.0/drives/' + drive.id + '/root:/Shared%20Documents/Nominas/' + empleado + ':/children';
-    lista.innerHTML = '<div style="padding:8px;font-size:11px;color:#666">Buscando en: ' + carpetaUrl + '</div>';
+    const carpetaUrl = 'https://graph.microsoft.com/v1.0/sites/' + siteId + '/drive/root:/Nominas/' + empleado + ':/children';
     const carpetaResp = await fetch(carpetaUrl, { headers: { Authorization: 'Bearer ' + token } });
 
     if (!carpetaResp.ok) {
