@@ -684,13 +684,12 @@ tbody tr:hover { background: var(--gris-fondo); }
             <input type="file" id="nomina-archivo" accept=".pdf" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
           </div>
           <div style="grid-column:1/-1;display:flex;gap:10px">
-            <button class="btn btn-primario" onclick="subirYEnviarNomina()">📤 Subir y enviar por email</button>
-            <button class="btn btn-verde" onclick="soloSubirNomina()">💾 Solo guardar</button>
+            <button class="btn btn-primario" onclick="subirYEnviarNomina()">📤 Subir nómina</button>
           </div>
           <div style="grid-column:1/-1"><div id="nomina-status" style="font-size:13px;min-height:20px"></div></div>
         </div>
         <div style="padding:0 16px 12px;font-size:12px;color:var(--gris-texto)">
-          ⚠️ El email notifica al empleado que su nómina está disponible. El PDF queda guardado en SharePoint. Asegúrate de que el empleado tiene <strong>Email</strong> en su ficha.
+          ℹ️ La nómina se guarda en SharePoint y estará disponible para el empleado en la sección "Mis nóminas" de la app.
         </div>
       </div>
       <div class="card">
@@ -848,13 +847,12 @@ tbody tr:hover { background: var(--gris-fondo); }
             <input type="file" id="nomina-archivo" accept=".pdf" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
           </div>
           <div style="grid-column:1/-1;display:flex;gap:10px">
-            <button class="btn btn-primario" onclick="subirYEnviarNomina()">📤 Subir y enviar por email</button>
-            <button class="btn btn-verde" onclick="soloSubirNomina()">💾 Solo guardar</button>
+            <button class="btn btn-primario" onclick="subirYEnviarNomina()">📤 Subir nómina</button>
           </div>
           <div style="grid-column:1/-1"><div id="nomina-status" style="font-size:13px;min-height:20px"></div></div>
         </div>
         <div style="padding:0 16px 12px;font-size:12px;color:var(--gris-texto)">
-          ⚠️ El envío usa el campo <strong>Email</strong> de la ficha del empleado. Asegúrate de que esté relleno.
+          ℹ️ El empleado podrá ver y descargar su nómina desde la app de fichajes.
         </div>
       </div>
       <div class="card">
@@ -2290,10 +2288,10 @@ async function obtenerDriveId() {
   return drive.id;
 }
 
-async function subirYEnviarNomina() { await _subirNomina(true); }
-async function soloSubirNomina()    { await _subirNomina(false); }
+async function subirYEnviarNomina() { await _subirNomina(); }
+async function soloSubirNomina()    { await _subirNomina(); }
 
-async function _subirNomina(enviarEmail) {
+async function _subirNomina() {
   const emp     = document.getElementById('nomina-empleado').value;
   const periodo = document.getElementById('nomina-periodo').value;
   const archivo = document.getElementById('nomina-archivo').files[0];
@@ -2313,50 +2311,9 @@ async function _subirNomina(enviarEmail) {
       { method:'PUT', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/pdf' }, body:archivo }
     );
     if (!r.ok) throw new Error('Error al subir el archivo');
-    status.textContent = '✓ Archivo guardado';
+    status.textContent = '✓ Nómina guardada — disponible en la app del empleado';
     status.style.color = 'var(--verde)';
-
-    if (enviarEmail) {
-      const empData  = empleadosCache.find(e => e.fields.Title === emp);
-      const emailDest = empData?.fields?.Email || empData?.fields?.EmailAddress || '';
-      if (!emailDest) { toast('Nómina subida — el empleado no tiene email registrado', 'error'); return; }
-      status.textContent = '⏳ Enviando email a ' + emailDest + '...';
-      const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-      const [anyo,mes] = periodo.split('-');
-      const periodoTexto = meses[parseInt(mes)-1] + ' ' + anyo;
-      // Envío con EmailJS
-      status.textContent = '⏳ Enviando email...';
-      try {
-        const ejsResp = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            service_id:  'service_a4jm8si',
-            template_id: 'template_67qy8pk',
-            user_id:     'iUrq-Rsyh60OSwFjl',
-            template_params: {
-              empleado:  emp,
-              nombre:    emp,
-              periodo:   periodoTexto,
-              to_email:  emailDest,
-              to_name:   emp,
-              message:   'Tu nómina de ' + periodoTexto + ' ha sido guardada. Puedes consultarla en la sección Nóminas de la app.'
-            }
-          })
-        });
-        if (!ejsResp.ok) {
-          const errTxt = await ejsResp.text();
-          throw new Error('EmailJS ' + ejsResp.status + ': ' + errTxt);
-        }
-      } catch(emailErr) {
-        throw new Error('Email no enviado: ' + (emailErr?.text || emailErr?.message || JSON.stringify(emailErr)));
-      }
-      status.textContent = '✓ Nómina enviada a ' + emailDest;
-      status.style.color = 'var(--verde)';
-      toast('✓ Nómina enviada a ' + emp, 'ok');
-    } else {
-      toast('✓ Nómina guardada', 'ok');
-    }
+    toast('✓ Nómina guardada', 'ok');
     document.getElementById('nomina-archivo').value = '';
     cargarNominas();
   } catch(err) {
