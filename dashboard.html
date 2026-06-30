@@ -2285,7 +2285,7 @@ async function cargarSelectsNominas() {
 async function obtenerDriveId() {
   if (window._driveId) return window._driveId;
   const data = await graphCall(`/sites/${siteId}/drives`);
-  const drive = (data.value||[]).find(d => d.driveType==='documentLibrary') || data.value[0];
+  const drives = data.value||[]; const drive = drives.find(d => d.name==='Documentos compartidos') || drives.find(d => d.name==='Documents') || drives.find(d => d.driveType==='documentLibrary') || drives[0];
   window._driveId = drive.id;
   return drive.id;
 }
@@ -2327,14 +2327,27 @@ async function _subirNomina(enviarEmail) {
       // Envío con EmailJS
       status.textContent = '⏳ Enviando email...';
       try {
-        emailjs.init('iUrq-Rsyh60OSwFjl');
-        await emailjs.send('service_a4jm8si', 'template_67qy8pk', {
-          empleado:  emp,
-          periodo:   periodoTexto,
-          to_email:  emailDest,
-          to_name:   emp,
-          message:   'Tu nómina de ' + periodoTexto + ' ha sido guardada. Puedes consultarla en la sección Nóminas de la app.'
+        const ejsResp = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service_id:  'service_a4jm8si',
+            template_id: 'template_67qy8pk',
+            user_id:     'iUrq-Rsyh60OSwFjl',
+            template_params: {
+              empleado:  emp,
+              nombre:    emp,
+              periodo:   periodoTexto,
+              to_email:  emailDest,
+              to_name:   emp,
+              message:   'Tu nómina de ' + periodoTexto + ' ha sido guardada. Puedes consultarla en la sección Nóminas de la app.'
+            }
+          })
         });
+        if (!ejsResp.ok) {
+          const errTxt = await ejsResp.text();
+          throw new Error('EmailJS ' + ejsResp.status + ': ' + errTxt);
+        }
       } catch(emailErr) {
         throw new Error('Email no enviado: ' + (emailErr?.text || emailErr?.message || JSON.stringify(emailErr)));
       }
