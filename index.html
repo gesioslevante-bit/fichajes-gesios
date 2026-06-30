@@ -1900,12 +1900,12 @@ async function cargarMisNominas() {
         periodoTexto = meses[parseInt(match[2]) - 1] + ' ' + match[1];
       }
       const fecha = f.lastModifiedDateTime ? f.lastModifiedDateTime.slice(0, 10) : '';
-      return `<div class="nomina-card">
+      return `<div class="nomina-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <div>
           <div class="nomina-periodo">💶 ${periodoTexto}</div>
           ${fecha ? '<div class="nomina-fecha">Subida el ' + fecha + '</div>' : ''}
         </div>
-        <a href="${f.webUrl}" target="_blank" class="nomina-btn">⬇ Descargar</a>
+        <a href="${f.webUrl}" target="_blank" rel="noopener" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px 16px;text-decoration:none;font-weight:600;white-space:nowrap;display:inline-block">⬇ Descargar</a>
       </div>`;
     }).join('');
 
