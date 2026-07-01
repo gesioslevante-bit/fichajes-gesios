@@ -2580,6 +2580,7 @@ async function actualizarNombreFestivo(fecha, nombre) {
 }
 
 
+async function exportarCalendarioPDF() {
   const wrap = document.getElementById('calendario-wrap');
   if (!wrap || !wrap.querySelector('.cal-grid')) {
     toast('Primero carga el calendario', 'error');
