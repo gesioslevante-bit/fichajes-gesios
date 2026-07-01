@@ -2456,9 +2456,12 @@ async function renderCalendario() {
 let festivosCache = {}; // { 'YYYY-MM-DD': { id, nombre } }
 
 async function cargarFestivosAnyo(anyo) {
-  const data = await graphCall(
-    `/sites/${siteId}/lists/Festivos/items?$expand=fields&$top=200&$filter=fields/Fecha ge '${anyo}-01-01' and fields/Fecha le '${anyo}-12-31'`
+  const token = await obtenerToken();
+  const resp = await fetch(
+    `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Festivos/items?$expand=fields&$top=200&$filter=fields/Fecha ge '${anyo}-01-01' and fields/Fecha le '${anyo}-12-31'`,
+    { headers: { Authorization: 'Bearer ' + token, 'Prefer': 'HonorNonIndexedQueriesWarningMayFailRandomly' } }
   );
+  const data = await resp.json();
   const mapa = {};
   (data.value || []).forEach(item => {
     const fecha = (item.fields.Fecha || '').slice(0,10);
