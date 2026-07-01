@@ -1052,7 +1052,6 @@ async function mostrarApp(account) {
   await cargarSiteId();
   await cargarEmpleadosEnSelectores();
   await cargarResumen();
-  // Mes actual en filtros
   const hoy = new Date();
   const mes = hoy.toISOString().slice(0, 7);
   document.getElementById('filtro-mes').value = mes;
@@ -1060,7 +1059,130 @@ async function mostrarApp(account) {
   const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().slice(0,10);
   document.getElementById('itss-desde').value = desde;
   document.getElementById('itss-hasta').value = hoy.toISOString().slice(0,10);
+
+  // Iniciar sistema de notificaciones
+  iniciarNotificaciones();
 }
+
+// ════════════════════════════════════════
+// NOTIFICACIONES NATIVAS DEL NAVEGADOR
+// ════════════════════════════════════════
+const NOTIF_INTERVALO = 30 * 60 * 1000; // 30 minutos
+let notifTimer = null;
+let notifEnviadas = new Set(); // evitar spam de misma notif
+
+async function iniciarNotificaciones() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    await Notification.requestPermission();
+  }
+  await comprobarNotificaciones();
+  notifTimer = setInterval(comprobarNotificaciones, NOTIF_INTERVALO);
+}
+
+function enviarNotif(id, titulo, cuerpo, icono) {
+  if (notifEnviadas.has(id)) return;
+  if (Notification.permission !== 'granted') return;
+  const n = new Notification(titulo, {
+    body: cuerpo,
+    icon: icono || 'https://gesioslevante-bit.github.io/fichajes-gesios/icon-192.png',
+    tag: id,
+    renotify: false
+  });
+  n.onclick = () => { window.focus(); n.close(); };
+  notifEnviadas.add(id);
+  // Limpiar el id después de 2h para que pueda renotificar si sigue el problema
+  setTimeout(() => notifEnviadas.delete(id), 2 * 60 * 60 * 1000);
+}
+
+async function comprobarNotificaciones() {
+  try {
+    const hoy = new Date().toISOString().slice(0, 10);
+
+    // 1. Empleados fichados sin salida hace más de 10h
+    const fichajes = await graphCall(
+      `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=100&$filter=fields/Fecha eq '${hoy}' and fields/Tipo eq 'ENTRADA'`
+    );
+    const entradas = {};
+    (fichajes.value || []).forEach(item => {
+      const f = item.fields;
+      if (!entradas[f.EmpleadoID] || f.Hora > entradas[f.EmpleadoID]) {
+        entradas[f.EmpleadoID] = f.Hora;
+      }
+    });
+    const salidas = await graphCall(
+      `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=100&$filter=fields/Fecha eq '${hoy}' and fields/Tipo eq 'SALIDA'`
+    );
+    const salidasSet = new Set((salidas.value || []).map(i => i.fields.EmpleadoID));
+    const ahora = new Date();
+    Object.entries(entradas).forEach(([emp, hora]) => {
+      if (salidasSet.has(emp)) return;
+      const [h, m] = hora.split(':').map(Number);
+      const entrada = new Date(); entrada.setHours(h, m, 0, 0);
+      const diffH = (ahora - entrada) / 3600000;
+      if (diffH >= 10) {
+        enviarNotif(
+          `fichado-${emp}-${hoy}`,
+          '⚠️ Empleado sin fichar salida',
+          `${emp} lleva ${Math.floor(diffH)}h ${Math.round((diffH%1)*60)}min fichado/a sin salida.`,
+        );
+      }
+    });
+
+    // 2. Ausencias pendientes de aprobar
+    const ausencias = await graphCall(
+      `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=50`
+    );
+    const pendientes = (ausencias.value || []).filter(i => i.fields.Estado === 'PENDIENTE');
+    if (pendientes.length > 0) {
+      enviarNotif(
+        `ausencias-pendientes-${hoy}`,
+        '📋 Ausencias pendientes',
+        `Hay ${pendientes.length} solicitud${pendientes.length > 1 ? 'es' : ''} de ausencia pendiente${pendientes.length > 1 ? 's' : ''} de aprobar.`,
+      );
+    }
+
+    // 3. Horas extras cerca del límite (>=72h de 80h max)
+    const anyoActual = new Date().getFullYear();
+    const empleados = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields`);
+    for (const emp of (empleados.value || [])) {
+      const nombre = emp.fields.Title;
+      const horasJornada = parseFloat(emp.fields.HorasJornada) || 8;
+      const limiteExtras = horasJornada >= 8 ? 80 : 60;
+      const umbraAviso = limiteExtras * 0.9;
+      const fichsAnyo = await graphCall(
+        `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=1000&$filter=fields/EmpleadoID eq '${nombre}' and fields/Fecha ge '${anyoActual}-01-01'`
+      );
+      let extras = 0;
+      const porDia = {};
+      (fichsAnyo.value || []).forEach(f => {
+        const fd = f.fields; if (!fd.Fecha) return;
+        if (!porDia[fd.Fecha]) porDia[fd.Fecha] = { e:null, s:null };
+        if (fd.Tipo==='ENTRADA') porDia[fd.Fecha].e = fd.Hora;
+        if (fd.Tipo==='SALIDA')  porDia[fd.Fecha].s = fd.Hora;
+      });
+      Object.values(porDia).forEach(({ e, s }) => {
+        if (!e || !s) return;
+        const [eh,em] = e.split(':').map(Number);
+        const [sh,sm] = s.split(':').map(Number);
+        const diffH = (sh*60+sm - (eh*60+em)) / 60;
+        const umbral = horasJornada + 0.25;
+        if (diffH > umbral) extras += diffH - horasJornada;
+      });
+      if (extras >= umbraAviso) {
+        enviarNotif(
+          `extras-${nombre}-${anyoActual}`,
+          '⏱️ Límite de horas extras',
+          `${nombre} lleva ${extras.toFixed(0)}h extras este año (límite: ${limiteExtras}h).`,
+        );
+      }
+    }
+
+  } catch(err) {
+    console.warn('Error comprobando notificaciones:', err.message);
+  }
+}
+
 
 // ════════════════════════════════════════
 // GRAPH API
