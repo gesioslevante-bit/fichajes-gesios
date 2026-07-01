@@ -198,6 +198,8 @@ tbody tr:hover { background: var(--gris-fondo); }
 .badge-rojo { background: var(--rojo-claro); color: var(--rojo); }
 .badge-naranja { background: var(--naranja-claro); color: var(--naranja); }
 .badge-azul { background: var(--azul-claro); color: var(--azul); }
+.badge-morado { background: #ede9fe; color: #8b5cf6; }
+.badge-gris { background: #f3f4f6; color: #6b7280; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
 /* ── FILTROS ── */
@@ -392,7 +394,10 @@ tbody tr:hover { background: var(--gris-fondo); }
         <span class="icono">⏱️</span> Control Horas
       </div>
       <div class="nav-item" onclick="mostrarSeccion('bajas')">
-        <span class="icono">🤒</span> Bajas
+        <span class="icono">📋</span> Bajas y Ausencias
+      </div>
+      <div class="nav-item" onclick="mostrarSeccion('festivos')">
+        <span class="icono">📅</span> Festivos
       </div>
       <div class="nav-item" onclick="mostrarSeccion('nominas')">
         <span class="icono">💶</span> Nóminas
@@ -611,56 +616,6 @@ tbody tr:hover { background: var(--gris-fondo); }
       </div>
     </div>
 
-    <!-- ── BAJAS ── -->
-    <div id="sec-bajas" class="seccion">
-      <div class="page-header">
-        <h2>Bajas médicas y laborales</h2>
-        <p>Registro manual de bajas por enfermedad común o accidente laboral</p>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-header"><h3>Nueva baja</h3></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px">
-          <div>
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Empleado</label>
-            <select id="baja-empleado" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px"></select>
-          </div>
-          <div>
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Tipo de baja</label>
-            <select id="baja-tipo" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
-              <option value="Baja médica">Baja médica (enfermedad común)</option>
-              <option value="Baja laboral">Baja laboral (accidente laboral)</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Fecha inicio</label>
-            <input type="date" id="baja-inicio" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
-          </div>
-          <div>
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Fecha fin (vacío si sigue de baja)</label>
-            <input type="date" id="baja-fin" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
-          </div>
-          <div style="grid-column:1/-1">
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Observaciones</label>
-            <textarea id="baja-obs" rows="2" placeholder="Parte médico, nº expediente..." style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box"></textarea>
-          </div>
-          <div style="grid-column:1/-1">
-            <button class="btn btn-primario" onclick="registrarBaja()">➕ Registrar baja</button>
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-header">
-          <h3>Historial de bajas</h3>
-          <button class="btn-refresh" onclick="cargarBajas()" title="Actualizar">↻</button>
-        </div>
-        <div class="tabla-wrap">
-          <table>
-            <thead><tr><th>Empleado</th><th>Tipo</th><th>Inicio</th><th>Fin</th><th>Días</th><th>Obs.</th><th>Acciones</th></tr></thead>
-            <tbody id="tabla-bajas"><tr><td colspan="7" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
 
     <!-- ── NÓMINAS ── -->
     <div id="sec-nominas" class="seccion">
@@ -774,24 +729,28 @@ tbody tr:hover { background: var(--gris-fondo); }
       </div>
     </div>
 
-    <!-- ── BAJAS ── -->
+    <!-- ── BAJAS Y AUSENCIAS ── -->
     <div id="sec-bajas" class="seccion">
       <div class="page-header">
-        <h2>Bajas médicas y laborales</h2>
-        <p>Registro manual de bajas por enfermedad común o accidente laboral</p>
+        <h2>Bajas y ausencias</h2>
+        <p>Registro manual de bajas, vacaciones ya disfrutadas y otras ausencias</p>
       </div>
       <div class="card" style="margin-bottom:16px">
-        <div class="card-header"><h3>Nueva baja</h3></div>
+        <div class="card-header"><h3>Nueva ausencia</h3></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px">
           <div>
             <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Empleado</label>
             <select id="baja-empleado" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px"></select>
           </div>
           <div>
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Tipo de baja</label>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Tipo</label>
             <select id="baja-tipo" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
-              <option value="Baja médica">Baja médica (enfermedad común)</option>
-              <option value="Baja laboral">Baja laboral (accidente laboral)</option>
+              <option value="Vacaciones">🏖️ Vacaciones</option>
+              <option value="Baja médica">🤒 Baja médica (enfermedad común)</option>
+              <option value="Baja laboral">🤕 Baja laboral (accidente laboral)</option>
+              <option value="Permiso médico">🩺 Permiso médico</option>
+              <option value="Asuntos propios">📋 Comp. / Asuntos propios</option>
+              <option value="Otros">📌 Otros</option>
             </select>
           </div>
           <div>
@@ -799,21 +758,21 @@ tbody tr:hover { background: var(--gris-fondo); }
             <input type="date" id="baja-inicio" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
           </div>
           <div>
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Fecha fin (vacío si sigue de baja)</label>
+            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Fecha fin (vacío si sigue en curso)</label>
             <input type="date" id="baja-fin" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
           </div>
           <div style="grid-column:1/-1">
             <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Observaciones</label>
-            <textarea id="baja-obs" rows="2" placeholder="Parte médico, nº expediente..." style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box"></textarea>
+            <textarea id="baja-obs" rows="2" placeholder="Parte médico, nº expediente, motivo..." style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box"></textarea>
           </div>
           <div style="grid-column:1/-1">
-            <button class="btn btn-primario" onclick="registrarBaja()">➕ Registrar baja</button>
+            <button class="btn btn-primario" onclick="registrarBaja()">➕ Registrar ausencia</button>
           </div>
         </div>
       </div>
       <div class="card">
         <div class="card-header">
-          <h3>Historial de bajas</h3>
+          <h3>Historial de bajas y ausencias</h3>
           <button class="btn-refresh" onclick="cargarBajas()" title="Actualizar">↻</button>
         </div>
         <div class="tabla-wrap">
@@ -825,10 +784,50 @@ tbody tr:hover { background: var(--gris-fondo); }
       </div>
     </div>
 
+    <!-- ── FESTIVOS ── -->
+    <div id="sec-festivos" class="seccion">
+      <div class="page-header">
+        <h2>Calendario de festivos</h2>
+        <p>Marca los días festivos autonómicos y locales haciendo clic en el calendario</p>
+      </div>
+      <div class="filtros" style="margin-bottom:16px">
+        <select id="fest-mes" onchange="renderFestivos()">
+          <option value="0">Enero</option><option value="1">Febrero</option>
+          <option value="2">Marzo</option><option value="3">Abril</option>
+          <option value="4">Mayo</option><option value="5">Junio</option>
+          <option value="6">Julio</option><option value="7">Agosto</option>
+          <option value="8">Septiembre</option><option value="9">Octubre</option>
+          <option value="10">Noviembre</option><option value="11">Diciembre</option>
+        </select>
+        <select id="fest-anyo" onchange="renderFestivos()">
+          <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
+        </select>
+      </div>
+      <div class="card" style="padding:16px">
+        <div id="festivos-wrap"><div class="cargando"><span class="spinner"></span> Cargando...</div></div>
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:var(--gris-texto)">
+        💡 Haz clic en un día para marcarlo/desmarcarlo como festivo. Los cambios se guardan automáticamente.
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <h3>Festivos de <span id="fest-anyo-titulo">2026</span></h3>
+          <button class="btn-refresh" onclick="renderFestivos()" title="Actualizar">↻</button>
+        </div>
+        <div class="tabla-wrap">
+          <table>
+            <thead><tr><th>Fecha</th><th>Día</th><th>Nombre (opcional)</th><th>Acciones</th></tr></thead>
+            <tbody id="tabla-festivos"><tr><td colspan="4" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ── NÓMINAS ── -->
     <div id="sec-nominas" class="seccion">
       <div class="page-header">
         <h2>Nóminas</h2>
+
         <p>Sube las nóminas y envíalas por email a cada empleado</p>
       </div>
       <div class="card" style="margin-bottom:16px">
@@ -1928,6 +1927,7 @@ function mostrarSeccion(id) {
   else if (id === 'bajas')          cargarBajas();
   else if (id === 'nominas')        { cargarNominas(); cargarSelectsNominas(); }
   else if (id === 'calendario')     renderCalendario();
+  else if (id === 'festivos')       renderFestivos();
   else if (id === 'fichaje-admin')  iniciarFichajeAdmin();
   else if (id === 'empleados') cargarEmpleados();
   else if (id === 'horas') cargarControlHoras();
@@ -2183,14 +2183,22 @@ async function cargarBajas() {
   tbody.innerHTML = '<tr><td colspan="7" class="cargando"><span class="spinner"></span> Cargando...</td></tr>';
   try {
     const data = await graphCall(
-      `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=200&$filter=fields/TipoAusencia eq 'Baja médica' or fields/TipoAusencia eq 'Baja laboral'`
+      `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=200`
     );
     const items = (data.value || []).sort((a,b) =>
       (b.fields.FechaInicio||'').localeCompare(a.fields.FechaInicio||''));
     if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="vacio"><div class="ico">🤒</div>No hay bajas registradas</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="vacio"><div class="ico">📋</div>No hay ausencias registradas</td></tr>';
       return;
     }
+    const badges = {
+      'Baja laboral':     '<span class="badge badge-rojo"><span class="dot"></span>Baja laboral</span>',
+      'Baja médica':      '<span class="badge badge-naranja"><span class="dot"></span>Baja médica</span>',
+      'Vacaciones':       '<span class="badge badge-azul"><span class="dot"></span>Vacaciones</span>',
+      'Permiso médico':   '<span class="badge badge-naranja"><span class="dot"></span>Permiso médico</span>',
+      'Asuntos propios':  '<span class="badge badge-morado"><span class="dot"></span>Asuntos propios</span>',
+      'Otros':            '<span class="badge badge-gris"><span class="dot"></span>Otros</span>'
+    };
     tbody.innerHTML = items.map(item => {
       const f = item.fields;
       const fi = f.FechaInicio ? f.FechaInicio.slice(0,10) : '—';
@@ -2199,9 +2207,7 @@ async function cargarBajas() {
       if (f.FechaInicio && f.FechaFin) {
         dias = Math.round((new Date(f.FechaFin) - new Date(f.FechaInicio)) / 86400000) + 1;
       }
-      const badge = f.TipoAusencia === 'Baja laboral'
-        ? '<span class="badge badge-rojo"><span class="dot"></span>Laboral</span>'
-        : '<span class="badge badge-naranja"><span class="dot"></span>Médica</span>';
+      const badge = badges[f.TipoAusencia] || `<span class="badge badge-gris"><span class="dot"></span>${f.TipoAusencia||'—'}</span>`;
       return `<tr>
         <td><strong>${f.EmpleadoID||'—'}</strong></td>
         <td>${badge}</td>
@@ -2210,7 +2216,7 @@ async function cargarBajas() {
         <td>${dias}</td>
         <td style="max-width:180px;white-space:normal;font-size:12px">${f.Motivo||'—'}</td>
         <td>
-          ${!f.FechaFin ? `<button class="btn btn-verde" onclick="darAltaBaja('${item.id}')">✓ Dar alta</button>` : ''}
+          ${!f.FechaFin ? `<button class="btn btn-verde" onclick="darAltaBaja('${item.id}')">✓ Cerrar</button>` : ''}
           <button class="btn btn-rojo" onclick="eliminarBaja('${item.id}')">🗑</button>
         </td>
       </tr>`;
@@ -2445,9 +2451,135 @@ async function renderCalendario() {
 }
 
 // ════════════════════════════════════════
-// EXPORTAR CALENDARIO PDF
+// FESTIVOS (calendario de días festivos)
 // ════════════════════════════════════════
-async function exportarCalendarioPDF() {
+let festivosCache = {}; // { 'YYYY-MM-DD': { id, nombre } }
+
+async function cargarFestivosAnyo(anyo) {
+  const data = await graphCall(
+    `/sites/${siteId}/lists/Festivos/items?$expand=fields&$top=200&$filter=fields/Fecha ge '${anyo}-01-01' and fields/Fecha le '${anyo}-12-31'`
+  );
+  const mapa = {};
+  (data.value || []).forEach(item => {
+    const fecha = (item.fields.Fecha || '').slice(0,10);
+    if (fecha) mapa[fecha] = { id: item.id, nombre: item.fields.Nombre || '' };
+  });
+  return mapa;
+}
+
+async function renderFestivos() {
+  const wrap = document.getElementById('festivos-wrap');
+  const tbody = document.getElementById('tabla-festivos');
+  wrap.innerHTML = '<div class="cargando"><span class="spinner"></span> Cargando...</div>';
+  const mes  = parseInt(document.getElementById('fest-mes').value);
+  const anyo = parseInt(document.getElementById('fest-anyo').value);
+  document.getElementById('fest-anyo-titulo').textContent = anyo;
+  try {
+    festivosCache = await cargarFestivosAnyo(anyo);
+    const primerDia = new Date(anyo, mes, 1);
+    const ultimoDia = new Date(anyo, mes+1, 0);
+    const dias = ['L','M','X','J','V','S','D'];
+    let html = '<div class="cal-grid">';
+    dias.forEach(d => { html += `<div class="cal-header-day">${d}</div>`; });
+    const offset = (primerDia.getDay()+6)%7;
+    for (let i=0;i<offset;i++) {
+      const prev = new Date(anyo,mes,-offset+i+1);
+      html += `<div class="cal-day otro-mes"><div class="cal-num" style="color:#9ca3af">${prev.getDate()}</div></div>`;
+    }
+    const hoy = new Date().toISOString().slice(0,10);
+    for (let dia=1;dia<=ultimoDia.getDate();dia++) {
+      const key = anyo+'-'+String(mes+1).padStart(2,'0')+'-'+String(dia).padStart(2,'0');
+      const esHoy = key===hoy;
+      const esFestivo = !!festivosCache[key];
+      const estiloFestivo = esFestivo ? 'background:#fee2e2;border:2px solid #ef4444;cursor:pointer' : 'cursor:pointer';
+      const nombreChip = esFestivo && festivosCache[key].nombre
+        ? `<span style="font-size:9px;color:#ef4444;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${festivosCache[key].nombre}</span>`
+        : (esFestivo ? '<span style="font-size:9px;color:#ef4444">🎉 Festivo</span>' : '');
+      html += `<div class="cal-day${esHoy?' hoy':''}" style="${estiloFestivo}" onclick="toggleFestivo('${key}')"><div class="cal-num">${dia}</div>${nombreChip}</div>`;
+    }
+    const totalCeldas = offset+ultimoDia.getDate();
+    const restantes = (7-(totalCeldas%7))%7;
+    for (let i=1;i<=restantes;i++) {
+      html += `<div class="cal-day otro-mes"><div class="cal-num" style="color:#9ca3af">${i}</div></div>`;
+    }
+    html += '</div>';
+    const mesesN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    wrap.innerHTML = `<h3 style="margin-bottom:10px;color:var(--azul)">${mesesN[mes]} ${anyo}</h3>`+html;
+
+    renderTablaFestivos();
+  } catch(err) {
+    wrap.innerHTML = `<div class="vacio">Error: ${err.message}</div>`;
+  }
+}
+
+function renderTablaFestivos() {
+  const tbody = document.getElementById('tabla-festivos');
+  const claves = Object.keys(festivosCache).sort();
+  if (!claves.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="vacio"><div class="ico">📅</div>No hay festivos marcados este año</td></tr>';
+    return;
+  }
+  const diasSemana = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+  tbody.innerHTML = claves.map(fecha => {
+    const f = festivosCache[fecha];
+    const d = new Date(fecha + 'T12:00:00');
+    const diaSemana = diasSemana[(d.getDay()+6)%7];
+    return `<tr>
+      <td><strong>${fecha}</strong></td>
+      <td>${diaSemana}</td>
+      <td><input type="text" value="${f.nombre||''}" placeholder="Ej: San José, Fallas..." style="width:100%;padding:4px 6px;border:1px solid var(--gris-borde);border-radius:6px;font-size:12px" onchange="actualizarNombreFestivo('${fecha}', this.value)"></td>
+      <td><button class="btn btn-rojo" onclick="eliminarFestivo('${fecha}')">🗑</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function toggleFestivo(fecha) {
+  if (festivosCache[fecha]) {
+    await eliminarFestivo(fecha);
+  } else {
+    await crearFestivo(fecha);
+  }
+}
+
+async function crearFestivo(fecha, nombre) {
+  try {
+    const token = await obtenerToken();
+    const resp = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Festivos/items`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { Fecha: fecha, Nombre: nombre || '' } })
+    });
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error?.message || resp.statusText); }
+    const item = await resp.json();
+    festivosCache[fecha] = { id: item.id, nombre: nombre || '' };
+    renderFestivos();
+  } catch(err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function eliminarFestivo(fecha) {
+  const f = festivosCache[fecha];
+  if (!f) return;
+  try {
+    const token = await obtenerToken();
+    await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Festivos/items/${f.id}`, {
+      method: 'DELETE', headers: { Authorization: 'Bearer ' + token }
+    });
+    delete festivosCache[fecha];
+    renderFestivos();
+  } catch(err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function actualizarNombreFestivo(fecha, nombre) {
+  const f = festivosCache[fecha];
+  if (!f) return;
+  try {
+    await graphPatch(`/sites/${siteId}/lists/Festivos/items/${f.id}/fields`, { Nombre: nombre });
+    festivosCache[fecha].nombre = nombre;
+    toast('✓ Guardado', 'ok');
+  } catch(err) { toast('Error: ' + err.message, 'error'); }
+}
+
+
   const wrap = document.getElementById('calendario-wrap');
   if (!wrap || !wrap.querySelector('.cal-grid')) {
     toast('Primero carga el calendario', 'error');
