@@ -321,6 +321,7 @@ tbody tr:hover { background: var(--gris-fondo); }
 .cal-chip.baja { background:#ef4444; }
 .cal-chip.comp { background:#8b5cf6; }
 .cal-chip.otros { background:#6b7280; }
+.cal-chip.festivo { background:#dc2626; font-size:9px; max-width:100%; }
 .horas-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .horas-stat { background: var(--gris-fondo); border-radius: 8px; padding: 8px 10px; }
 .horas-stat-val { font-size: 18px; font-weight: 700; color: var(--azul); }
@@ -395,9 +396,6 @@ tbody tr:hover { background: var(--gris-fondo); }
       </div>
       <div class="nav-item" onclick="mostrarSeccion('bajas')">
         <span class="icono">📋</span> Bajas y Ausencias
-      </div>
-      <div class="nav-item" onclick="mostrarSeccion('festivos')">
-        <span class="icono">📅</span> Festivos
       </div>
       <div class="nav-item" onclick="mostrarSeccion('nominas')">
         <span class="icono">💶</span> Nóminas
@@ -1927,7 +1925,6 @@ function mostrarSeccion(id) {
   else if (id === 'bajas')          cargarBajas();
   else if (id === 'nominas')        { cargarNominas(); cargarSelectsNominas(); }
   else if (id === 'calendario')     renderCalendario();
-  else if (id === 'festivos')       renderFestivos();
   else if (id === 'fichaje-admin')  iniciarFichajeAdmin();
   else if (id === 'empleados') cargarEmpleados();
   else if (id === 'horas') cargarControlHoras();
@@ -2398,12 +2395,19 @@ async function renderCalendario() {
   const desde = primerDia.toISOString().slice(0,10);
   const hasta  = ultimoDia.toISOString().slice(0,10);
   try {
-    const data = await graphCall(
-      `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/FechaFin ge '${desde}T00:00:00Z' and fields/FechaInicio le '${hasta}T23:59:59Z'`
-    );
-    const ausencias = data.value || [];
+    // Cargar ausencias y festivos en paralelo
+    const [dataAus, dataFest] = await Promise.all([
+      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/FechaFin ge '${desde}T00:00:00Z' and fields/FechaInicio le '${hasta}T23:59:59Z'`),
+      (async () => {
+        const token = await obtenerToken();
+        const r = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Festivos/items?$expand=fields&$top=500`, { headers: { Authorization: 'Bearer ' + token } });
+        return r.json();
+      })()
+    ]);
+
+    // Mapa de ausencias por día
     const mapa = {};
-    ausencias.forEach(item => {
+    (dataAus.value || []).forEach(item => {
       const f = item.fields;
       const fi = new Date(f.FechaInicio);
       const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(fi);
@@ -2413,6 +2417,14 @@ async function renderCalendario() {
         mapa[key].push({ emp:f.EmpleadoID||'—', tipo:f.TipoAusencia||'Otros' });
       }
     });
+
+    // Mapa de festivos por día
+    festivosCache = {};
+    (dataFest.value || []).forEach(item => {
+      const fecha = (item.fields.Fecha || '').slice(0,10);
+      if (fecha) festivosCache[fecha] = { id: item.id, nombre: item.fields.Nombre || '' };
+    });
+
     const hoy = new Date().toISOString().slice(0,10);
     const dias = ['L','M','X','J','V','S','D'];
     let html = '<div class="cal-grid">';
@@ -2425,6 +2437,7 @@ async function renderCalendario() {
     for (let dia=1;dia<=ultimoDia.getDate();dia++) {
       const key = anyo+'-'+String(mes+1).padStart(2,'0')+'-'+String(dia).padStart(2,'0');
       const esHoy = key===hoy;
+      const esFestivo = !!festivosCache[key];
       const items = mapa[key]||[];
       const chips = items.slice(0,3).map(a => {
         let cls='otros';
@@ -2435,7 +2448,10 @@ async function renderCalendario() {
         return `<span class="cal-chip ${cls}" title="${a.emp} — ${a.tipo}">${a.emp.split(' ')[0]}</span>`;
       }).join('');
       const mas = items.length>3 ? `<span style="font-size:10px;color:var(--gris-texto)">+${items.length-3} más</span>` : '';
-      html += `<div class="cal-day${esHoy?' hoy':''}"><div class="cal-num">${dia}</div>${chips}${mas}</div>`;
+      const festivoChip = esFestivo ? `<span class="cal-chip festivo" title="🎉 ${festivosCache[key].nombre||'Festivo'}">🎉${festivosCache[key].nombre ? ' '+festivosCache[key].nombre : ''}</span>` : '';
+      const estiloFestivo = esFestivo ? 'background:#fff7f7;border-color:#fca5a5;' : '';
+      const clickFestivo = `onclick="toggleFestivoCalendario('${key}')"`;
+      html += `<div class="cal-day${esHoy?' hoy':''}" style="${estiloFestivo}cursor:pointer" ${clickFestivo} title="${esFestivo?'Clic para quitar festivo':'Clic para marcar festivo'}"><div class="cal-num">${dia}</div>${festivoChip}${chips}${mas}</div>`;
     }
     const totalCeldas = offset+ultimoDia.getDate();
     const restantes = (7-(totalCeldas%7))%7;
@@ -2444,10 +2460,29 @@ async function renderCalendario() {
     }
     html += '</div>';
     const mesesN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    wrap.innerHTML = `<h3 style="margin-bottom:10px;color:var(--azul)">${mesesN[mes]} ${anyo}</h3>`+html;
+    wrap.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h3 style="color:var(--azul)">${mesesN[mes]} ${anyo}</h3>
+        <div style="display:flex;gap:8px;font-size:11px;align-items:center">
+          <span style="display:flex;align-items:center;gap:4px"><span class="cal-chip festivo">🎉</span> Festivo (clic para marcar/quitar)</span>
+        </div>
+      </div>
+      ${html}`;
   } catch(err) {
     wrap.innerHTML = `<div class="vacio">Error: ${err.message}</div>`;
   }
+}
+
+async function toggleFestivoCalendario(fecha) {
+  if (festivosCache[fecha]) {
+    if (!confirm('¿Quitar el festivo del ' + fecha + '?')) return;
+    await eliminarFestivo(fecha);
+  } else {
+    const nombre = prompt('Nombre del festivo (opcional):', '') ;
+    if (nombre === null) return; // cancelado
+    await crearFestivo(fecha, nombre);
+  }
+  renderCalendario();
 }
 
 // ════════════════════════════════════════
