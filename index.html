@@ -417,7 +417,7 @@
     background: var(--blanco);
     border-top: 1px solid #E8EDE8;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     padding: 8px 0 env(safe-area-inset-bottom, 8px);
     position: sticky;
     bottom: 0;
@@ -431,7 +431,12 @@
     border: none;
     cursor: pointer;
     gap: 4px;
-    transition: all 0.2s;
+    border-radius: 10px;
+    transition: transform 0.1s, background-color 0.1s;
+  }
+  .menu-item:active {
+    transform: scale(0.92);
+    background: #F0F5F0;
   }
   .menu-item .icono-menu { font-size: 22px; }
   .menu-item .label-menu {
@@ -924,7 +929,7 @@
     <div class="error-texto" id="error-ausencia"></div>
 
     <div style="margin-top:auto; padding-top:16px;">
-      <button class="btn btn-principal" onclick="enviarAusencia()">Enviar solicitud</button>
+      <button class="btn btn-principal" id="btn-enviar-ausencia" onclick="enviarAusencia()">Enviar solicitud</button>
     </div>
   </div>
 </div>
@@ -1089,23 +1094,35 @@ async function inicializarMSAL() {
   } catch(e) { console.log('Redirect handled:', e); }
 }
 
+let _tokenCache = { token: null, expira: 0 };
+
 async function obtenerToken() {
+  // Reutilizar el token en memoria mientras siga siendo válido
+  // (evita llamar a acquireTokenSilent varias veces seguidas, p.ej. al
+  // subir un justificante y crear la ausencia en el mismo envío).
+  if (_tokenCache.token && Date.now() < _tokenCache.expira) {
+    return _tokenCache.token;
+  }
+
   const accounts = estado.msalInstance.getAllAccounts();
   const request = { scopes: CONFIG.scopes };
+  let result;
 
   try {
     if (accounts.length > 0) {
       request.account = accounts[0];
-      const result = await estado.msalInstance.acquireTokenSilent(request);
-      return result.accessToken;
+      result = await estado.msalInstance.acquireTokenSilent(request);
     } else {
-      const result = await estado.msalInstance.acquireTokenPopup(request);
-      return result.accessToken;
+      result = await estado.msalInstance.acquireTokenPopup(request);
     }
   } catch(e) {
-    const result = await estado.msalInstance.acquireTokenPopup(request);
-    return result.accessToken;
+    result = await estado.msalInstance.acquireTokenPopup(request);
   }
+
+  // Margen de seguridad de 60s antes de la expiración real del token
+  const expiraEn = result.expiresOn ? result.expiresOn.getTime() - 60000 : Date.now() + 5 * 60000;
+  _tokenCache = { token: result.accessToken, expira: expiraEn };
+  return result.accessToken;
 }
 
 // ══════════════════════════════════════════
@@ -1616,7 +1633,11 @@ async function eliminarAusencia(id) {
   return await graphCall(`/sites/${siteId}/lists/Ausencias/items/${id}`, 'DELETE');
 }
 
+let _enviandoAusencia = false;
+
 async function enviarAusencia() {
+  if (_enviandoAusencia) return; // evita doble envío si se pulsa varias veces
+
   const tipo = document.getElementById('tipo-ausencia').value;
   const fi = document.getElementById('fecha-inicio-ausencia').value;
   const ff = document.getElementById('fecha-fin-ausencia').value;
@@ -1630,7 +1651,14 @@ async function enviarAusencia() {
 
   const dias = Math.ceil((new Date(ff) - new Date(fi)) / 86400000) + 1;
 
+  _enviandoAusencia = true;
+  const btnEnviar = document.getElementById('btn-enviar-ausencia');
+  if (btnEnviar) { btnEnviar.disabled = true; btnEnviar.style.opacity = '0.6'; }
+
+  // Mostrar el overlay de carga en el mismo tick del clic, antes de cualquier await,
+  // para que el usuario vea respuesta inmediata al pulsar.
   mostrarCargando('Enviando solicitud...');
+
   try {
     let justificanteURL = '';
     if (archivoJustificante) {
@@ -1655,6 +1683,9 @@ async function enviarAusencia() {
     ocultarCargando();
     mostrarToast('❌ Error al enviar. Inténtalo de nuevo.', 'error');
     console.error(e);
+  } finally {
+    _enviandoAusencia = false;
+    if (btnEnviar) { btnEnviar.disabled = false; btnEnviar.style.opacity = '1'; }
   }
 }
 
