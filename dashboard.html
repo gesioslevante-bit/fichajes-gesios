@@ -394,6 +394,9 @@ tbody tr:hover { background: var(--gris-fondo); }
       <div class="nav-item" onclick="mostrarSeccion('horas')">
         <span class="icono">⏱️</span> Control Horas
       </div>
+      <div class="nav-item" onclick="mostrarSeccion('vacaciones')">
+        <span class="icono">🏖️</span> Vacaciones y AP
+      </div>
       <div class="nav-item" onclick="mostrarSeccion('bajas')">
         <span class="icono">📋</span> Bajas y Ausencias
       </div>
@@ -614,6 +617,25 @@ tbody tr:hover { background: var(--gris-fondo); }
       </div>
     </div>
 
+    <!-- ── VACACIONES Y ASUNTOS PROPIOS ── -->
+    <div id="sec-vacaciones" class="seccion">
+      <div class="page-header">
+        <h2>Vacaciones y Asuntos propios</h2>
+        <p>Días disponibles y consumidos por trabajador (23 días de vacaciones + 6 de asuntos propios al año)</p>
+      </div>
+      <div class="filtros">
+        <select id="vac-anyo" onchange="cargarVacaciones()">
+          <option value="2025">2025</option>
+          <option value="2026" selected>2026</option>
+          <option value="2027">2027</option>
+        </select>
+        <button class="btn btn-primario" onclick="cargarVacaciones()">🔍 Calcular</button>
+      </div>
+      <div id="vacaciones-resultado">
+        <div class="cargando"><span class="spinner"></span> Cargando...</div>
+      </div>
+    </div>
+
 
     <!-- ── NÓMINAS ── -->
     <div id="sec-nominas" class="seccion">
@@ -821,120 +843,6 @@ tbody tr:hover { background: var(--gris-fondo); }
       </div>
     </div>
 
-    <!-- ── NÓMINAS ── -->
-    <div id="sec-nominas" class="seccion">
-      <div class="page-header">
-        <h2>Nóminas</h2>
-
-        <p>Sube las nóminas y envíalas por email a cada empleado</p>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-header"><h3>Subir nómina</h3></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px">
-          <div>
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Empleado</label>
-            <select id="nomina-empleado" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px"></select>
-          </div>
-          <div>
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Período</label>
-            <input type="month" id="nomina-periodo" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
-          </div>
-          <div style="grid-column:1/-1">
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Archivo PDF</label>
-            <input type="file" id="nomina-archivo" accept=".pdf" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px">
-          </div>
-          <div style="grid-column:1/-1;display:flex;gap:10px">
-            <button class="btn btn-primario" onclick="subirYEnviarNomina()">📤 Subir nómina</button>
-          </div>
-          <div style="grid-column:1/-1"><div id="nomina-status" style="font-size:13px;min-height:20px"></div></div>
-        </div>
-        <div style="padding:0 16px 12px;font-size:12px;color:var(--gris-texto)">
-          ℹ️ El empleado podrá ver y descargar su nómina desde la app de fichajes.
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-header">
-          <h3>Nóminas guardadas</h3>
-          <button class="btn-refresh" onclick="cargarNominas()" title="Actualizar">↻</button>
-        </div>
-        <div class="tabla-wrap">
-          <table>
-            <thead><tr><th>Empleado</th><th>Período</th><th>Fecha subida</th><th>Archivo</th><th></th></tr></thead>
-            <tbody id="tabla-nominas"><tr><td colspan="5" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── CALENDARIO ── -->
-    <div id="sec-calendario" class="seccion">
-      <div class="page-header">
-        <h2>Calendario de ausencias</h2>
-        <p>Visión mensual de ausencias aprobadas</p>
-      </div>
-      <div class="filtros" style="margin-bottom:16px">
-        <select id="cal-mes" onchange="renderCalendario()">
-          <option value="0">Enero</option><option value="1">Febrero</option>
-          <option value="2">Marzo</option><option value="3">Abril</option>
-          <option value="4">Mayo</option><option value="5">Junio</option>
-          <option value="6">Julio</option><option value="7">Agosto</option>
-          <option value="8">Septiembre</option><option value="9">Octubre</option>
-          <option value="10">Noviembre</option><option value="11">Diciembre</option>
-        </select>
-        <select id="cal-anyo" onchange="renderCalendario()">
-          <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
-        </select>
-        <button class="btn btn-primario" onclick="renderCalendario()">🔍 Ver</button>
-        <button class="btn btn-verde" onclick="exportarCalendarioPDF()">📄 Exportar PDF</button>
-      </div>
-      <div id="calendario-wrap"></div>
-      <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px">
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#3b82f6;display:inline-block"></span> Vacaciones</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#f59e0b;display:inline-block"></span> Permiso médico</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#ef4444;display:inline-block"></span> Baja médica / laboral</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#8b5cf6;display:inline-block"></span> Comp. / Asuntos propios</span>
-        <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#6b7280;display:inline-block"></span> Otros</span>
-      </div>
-    </div>
-
-    <!-- ── FICHAR POR EMPLEADO ── -->
-    <div id="sec-fichaje-admin" class="seccion">
-      <div class="page-header">
-        <h2>Fichar por empleado</h2>
-        <p>Registra una entrada o salida manualmente en nombre de un empleado</p>
-      </div>
-      <div class="card" style="max-width:520px">
-        <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
-          <div>
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Empleado</label>
-            <select id="fadmin-empleado" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px"></select>
-          </div>
-          <div>
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Tipo de fichaje</label>
-            <div style="display:flex;gap:16px">
-              <label style="cursor:pointer;font-size:14px"><input type="radio" name="fadmin-tipo" value="ENTRADA" checked style="margin-right:6px">✅ Entrada</label>
-              <label style="cursor:pointer;font-size:14px"><input type="radio" name="fadmin-tipo" value="SALIDA" style="margin-right:6px">🚪 Salida</label>
-            </div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <div>
-              <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Fecha</label>
-              <input type="date" id="fadmin-fecha" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px;box-sizing:border-box">
-            </div>
-            <div>
-              <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Hora</label>
-              <input type="time" id="fadmin-hora" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px;box-sizing:border-box">
-            </div>
-          </div>
-          <div>
-            <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Observaciones (opcional)</label>
-            <input type="text" id="fadmin-obs" placeholder="Ej: Se olvidó fichar" style="width:100%;padding:10px;border:1px solid var(--gris-borde);border-radius:8px;font-size:14px;box-sizing:border-box">
-          </div>
-          <button class="btn btn-primario" onclick="ficharPorEmpleado()" style="width:100%;padding:12px;font-size:15px">🖊️ Registrar fichaje</button>
-        </div>
-      </div>
-    </div>
-
   </main>
 </div>
 
@@ -1098,27 +1006,29 @@ function enviarNotif(id, titulo, cuerpo, icono) {
 async function comprobarNotificaciones() {
   try {
     const hoy = new Date().toISOString().slice(0, 10);
+    const inicioDia = hoy + 'T00:00:00Z';
+    const finDia = hoy + 'T23:59:59Z';
 
     // 1. Empleados fichados sin salida hace más de 10h
-    const fichajes = await graphCall(
-      `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=100&$filter=fields/Fecha eq '${hoy}' and fields/Tipo eq 'ENTRADA'`
+    const fichajesHoy = await graphCall(
+      `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=200&$filter=fields/Timestamp ge '${inicioDia}' and fields/Timestamp le '${finDia}'`
     );
     const entradas = {};
-    (fichajes.value || []).forEach(item => {
+    const salidasSet = new Set();
+    (fichajesHoy.value || []).forEach(item => {
       const f = item.fields;
-      if (!entradas[f.EmpleadoID] || f.Hora > entradas[f.EmpleadoID]) {
-        entradas[f.EmpleadoID] = f.Hora;
+      if (f.TipoFichaje === 'ENTRADA') {
+        if (!entradas[f.EmpleadoID] || f.Timestamp > entradas[f.EmpleadoID]) {
+          entradas[f.EmpleadoID] = f.Timestamp;
+        }
+      } else if (f.TipoFichaje === 'SALIDA') {
+        salidasSet.add(f.EmpleadoID);
       }
     });
-    const salidas = await graphCall(
-      `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=100&$filter=fields/Fecha eq '${hoy}' and fields/Tipo eq 'SALIDA'`
-    );
-    const salidasSet = new Set((salidas.value || []).map(i => i.fields.EmpleadoID));
     const ahora = new Date();
-    Object.entries(entradas).forEach(([emp, hora]) => {
+    Object.entries(entradas).forEach(([emp, timestamp]) => {
       if (salidasSet.has(emp)) return;
-      const [h, m] = hora.split(':').map(Number);
-      const entrada = new Date(); entrada.setHours(h, m, 0, 0);
+      const entrada = new Date(timestamp);
       const diffH = (ahora - entrada) / 3600000;
       if (diffH >= 10) {
         enviarNotif(
@@ -1151,21 +1061,20 @@ async function comprobarNotificaciones() {
       const limiteExtras = horasJornada >= 8 ? 80 : 60;
       const umbraAviso = limiteExtras * 0.9;
       const fichsAnyo = await graphCall(
-        `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=1000&$filter=fields/EmpleadoID eq '${nombre}' and fields/Fecha ge '${anyoActual}-01-01'`
+        `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=1000&$filter=fields/EmpleadoID eq '${nombre}' and fields/Timestamp ge '${anyoActual}-01-01T00:00:00Z'`
       );
       let extras = 0;
       const porDia = {};
       (fichsAnyo.value || []).forEach(f => {
-        const fd = f.fields; if (!fd.Fecha) return;
-        if (!porDia[fd.Fecha]) porDia[fd.Fecha] = { e:null, s:null };
-        if (fd.Tipo==='ENTRADA') porDia[fd.Fecha].e = fd.Hora;
-        if (fd.Tipo==='SALIDA')  porDia[fd.Fecha].s = fd.Hora;
+        const fd = f.fields; if (!fd.Timestamp) return;
+        const dia = fd.Timestamp.slice(0, 10);
+        if (!porDia[dia]) porDia[dia] = { e:null, s:null };
+        if (fd.TipoFichaje==='ENTRADA') porDia[dia].e = fd.Timestamp;
+        if (fd.TipoFichaje==='SALIDA')  porDia[dia].s = fd.Timestamp;
       });
       Object.values(porDia).forEach(({ e, s }) => {
         if (!e || !s) return;
-        const [eh,em] = e.split(':').map(Number);
-        const [sh,sm] = s.split(':').map(Number);
-        const diffH = (sh*60+sm - (eh*60+em)) / 60;
+        const diffH = (new Date(s) - new Date(e)) / 3600000;
         const umbral = horasJornada + 0.25;
         if (diffH > umbral) extras += diffH - horasJornada;
       });
@@ -1470,7 +1379,7 @@ async function cargarAusencias() {
         <td>${f.TipoAusencia || '—'}</td>
         <td>${formatFecha(f.FechaInicio)}</td>
         <td>${formatFecha(f.FechaFin)}</td>
-        <td>${f.Motivo || '—'}</td>
+        <td>${f.Motivo || '—'}${f.JustificanteURL ? ` <a href="${f.JustificanteURL}" target="_blank" title="Ver justificante" style="margin-left:4px">📎</a>` : ''}</td>
         <td><span class="badge ${badgeClass}"><span class="dot"></span>${estado}</span></td>
         <td>${acciones}</td>
       </tr>`;
@@ -2032,6 +1941,121 @@ async function cargarControlHoras() {
 function horasExtraAnyas(h) { return h.toFixed(1); }
 
 // ════════════════════════════════════════
+// VACACIONES Y ASUNTOS PROPIOS
+// ════════════════════════════════════════
+const CUPO_VACACIONES = 23;
+const CUPO_ASUNTOS_PROPIOS = 6;
+
+async function cargarVacaciones() {
+  const div = document.getElementById('vacaciones-resultado');
+  div.innerHTML = '<div class="cargando"><span class="spinner"></span> Calculando...</div>';
+
+  const anyo = parseInt(document.getElementById('vac-anyo').value);
+  const desde = new Date(anyo, 0, 1);
+  const hasta = new Date(anyo, 11, 31, 23, 59, 59);
+
+  try {
+    const [dataEmp, dataAus] = await Promise.all([
+      graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`),
+      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA'`)
+    ]);
+
+    const empleados = dataEmp.value || [];
+    const ausencias = dataAus.value || [];
+
+    if (!empleados.length) {
+      div.innerHTML = '<div class="vacio">No hay empleados</div>';
+      return;
+    }
+
+    // Días usados por empleado y tipo, solapando con el año seleccionado
+    const usados = {}; // { nombre: { vacaciones: n, asuntosPropios: n } }
+    ausencias.forEach(item => {
+      const f = item.fields;
+      const esVac = f.TipoAusencia === 'Vacaciones';
+      const esAP = f.TipoAusencia === 'Asuntos propios';
+      if (!esVac && !esAP) return;
+      if (!f.FechaInicio || !f.FechaFin) return;
+
+      const fi = new Date(f.FechaInicio);
+      const ff = new Date(f.FechaFin);
+      // Recortar el rango a los límites del año seleccionado
+      const inicioEfectivo = fi < desde ? desde : fi;
+      const finEfectivo = ff > hasta ? hasta : ff;
+      if (inicioEfectivo > finEfectivo) return; // no solapa con el año
+
+      const dias = Math.round((finEfectivo - inicioEfectivo) / 86400000) + 1;
+      const emp = f.EmpleadoID;
+      if (!usados[emp]) usados[emp] = { vacaciones: 0, asuntosPropios: 0 };
+      if (esVac) usados[emp].vacaciones += dias;
+      else usados[emp].asuntosPropios += dias;
+    });
+
+    let html = '<div class="horas-grid">';
+
+    empleados.forEach(e => {
+      const nombre = e.fields.Title;
+      const cupoVac = parseFloat(e.fields.CupoVacaciones) || CUPO_VACACIONES;
+      const cupoAP = parseFloat(e.fields.CupoAsuntosPropios) || CUPO_ASUNTOS_PROPIOS;
+      const usoVac = (usados[nombre] && usados[nombre].vacaciones) || 0;
+      const usoAP = (usados[nombre] && usados[nombre].asuntosPropios) || 0;
+      const restanVac = cupoVac - usoVac;
+      const restanAP = cupoAP - usoAP;
+
+      const pctVac = Math.min(100, (usoVac / cupoVac) * 100) || 0;
+      const pctAP = Math.min(100, (usoAP / cupoAP) * 100) || 0;
+      const colorVac = restanVac < 0 ? 'rojo' : restanVac <= 3 ? 'naranja' : 'verde';
+      const colorAP = restanAP < 0 ? 'rojo' : restanAP <= 1 ? 'naranja' : 'verde';
+
+      html += `
+        <div class="horas-empleado-card">
+          <div class="horas-empleado-nombre">${nombre}</div>
+
+          <div class="horas-barra-wrap">
+            <div class="horas-barra-label">
+              <span>🏖️ Vacaciones</span>
+              <span>${usoVac} / ${cupoVac} días</span>
+            </div>
+            <div class="horas-barra">
+              <div class="horas-barra-fill ${restanVac < 0 ? 'peligro' : 'ordinaria'}" style="width:${pctVac}%"></div>
+            </div>
+          </div>
+
+          <div class="horas-barra-wrap">
+            <div class="horas-barra-label">
+              <span>📅 Asuntos propios</span>
+              <span>${usoAP} / ${cupoAP} días</span>
+            </div>
+            <div class="horas-barra">
+              <div class="horas-barra-fill ${restanAP < 0 ? 'peligro' : 'extra'}" style="width:${pctAP}%"></div>
+            </div>
+          </div>
+
+          <div class="horas-stats">
+            <div class="horas-stat">
+              <div class="horas-stat-val ${colorVac}">${restanVac}</div>
+              <div class="horas-stat-label">Días vacaciones restantes</div>
+            </div>
+            <div class="horas-stat">
+              <div class="horas-stat-val ${colorAP}">${restanAP}</div>
+              <div class="horas-stat-label">Días AP restantes</div>
+            </div>
+          </div>
+
+          ${restanVac < 0 ? `<div class="alerta-extras">🚨 Ha superado el cupo de vacaciones (${Math.abs(restanVac)} día${Math.abs(restanVac)!==1?'s':''} de más)</div>` : ''}
+          ${restanAP < 0 ? `<div class="alerta-extras">🚨 Ha superado el cupo de asuntos propios (${Math.abs(restanAP)} día${Math.abs(restanAP)!==1?'s':''} de más)</div>` : ''}
+        </div>`;
+    });
+
+    html += '</div>';
+    div.innerHTML = html;
+
+  } catch(err) {
+    div.innerHTML = `<div class="vacio">Error: ${err.message}</div>`;
+  }
+}
+
+// ════════════════════════════════════════
 // NAVEGACIÓN
 // ════════════════════════════════════════
 function mostrarSeccion(id) {
@@ -2050,6 +2074,7 @@ function mostrarSeccion(id) {
   else if (id === 'fichaje-admin')  iniciarFichajeAdmin();
   else if (id === 'empleados') cargarEmpleados();
   else if (id === 'horas') cargarControlHoras();
+  else if (id === 'vacaciones') cargarVacaciones();
 }
 
 // ════════════════════════════════════════
@@ -2333,7 +2358,7 @@ async function cargarBajas() {
         <td>${fi}</td>
         <td>${ff}</td>
         <td>${dias}</td>
-        <td style="max-width:180px;white-space:normal;font-size:12px">${f.Motivo||'—'}</td>
+        <td style="max-width:180px;white-space:normal;font-size:12px">${f.Motivo||'—'}${f.JustificanteURL ? ` <a href="${f.JustificanteURL}" target="_blank" title="Ver justificante">📎</a>` : ''}</td>
         <td>
           ${!f.FechaFin ? `<button class="btn btn-verde" onclick="darAltaBaja('${item.id}')">✓ Cerrar</button>` : ''}
           <button class="btn btn-rojo" onclick="eliminarBaja('${item.id}')">🗑</button>
