@@ -309,19 +309,19 @@ tbody tr:hover { background: var(--gris-fondo); }
 .horas-barra-fill.peligro { background: var(--rojo); }
 
 /* ── Calendario ── */
-.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
-.cal-header-day { text-align:center; font-size:11px; font-weight:700; color:var(--gris-texto); padding:6px 0; }
-.cal-day { min-height:72px; background:#fff; border:1px solid var(--gris-borde); border-radius:6px; padding:4px; font-size:11px; position:relative; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+.cal-header-day { text-align:center; font-size:13px; font-weight:700; color:var(--gris-texto); padding:8px 0; }
+.cal-day { min-height:150px; background:#fff; border:1px solid var(--gris-borde); border-radius:6px; padding:6px; font-size:12px; position:relative; overflow-y:auto; }
 .cal-day.otro-mes { background:#f9fafb; opacity:.5; }
-.cal-day.hoy { border-color:var(--azul); }
-.cal-num { font-weight:700; color:#374151; margin-bottom:2px; }
-.cal-chip { border-radius:3px; padding:1px 4px; margin-bottom:2px; font-size:10px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; display:block; }
+.cal-day.hoy { border-color:var(--azul); border-width:2px; }
+.cal-num { font-weight:700; color:#374151; margin-bottom:4px; font-size:14px; }
+.cal-chip { border-radius:4px; padding:2px 6px; margin-bottom:2px; font-size:11px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; display:block; }
 .cal-chip.vacaciones { background:#3b82f6; }
 .cal-chip.permiso { background:#f59e0b; }
 .cal-chip.baja { background:#ef4444; }
 .cal-chip.comp { background:#8b5cf6; }
 .cal-chip.otros { background:#6b7280; }
-.cal-chip.festivo { background:#dc2626; font-size:9px; max-width:100%; }
+.cal-chip.festivo { background:#dc2626; font-size:10px; max-width:100%; }
 .horas-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .horas-stat { background: var(--gris-fondo); border-radius: 8px; padding: 8px 10px; }
 .horas-stat-val { font-size: 18px; font-weight: 700; color: var(--azul); }
@@ -700,6 +700,7 @@ tbody tr:hover { background: var(--gris-fondo); }
           <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
         </select>
         <button class="btn btn-primario" onclick="renderCalendario()">🔍 Ver</button>
+        <button class="btn" onclick="exportarCalendarioPDF()">🖨️ Imprimir / PDF</button>
       </div>
       <div id="calendario-wrap"></div>
       <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px">
@@ -769,7 +770,8 @@ tbody tr:hover { background: var(--gris-fondo); }
               <option value="Baja médica">🤒 Baja médica (enfermedad común)</option>
               <option value="Baja laboral">🤕 Baja laboral (accidente laboral)</option>
               <option value="Permiso médico">🩺 Permiso médico</option>
-              <option value="Asuntos propios">📋 Comp. / Asuntos propios</option>
+              <option value="Compensación de horas">🔄 Compensación de horas</option>
+              <option value="Asuntos propios">📋 Asuntos propios</option>
               <option value="Otros">📌 Otros</option>
             </select>
           </div>
@@ -2586,7 +2588,7 @@ async function renderCalendario() {
       const esHoy = key===hoy;
       const esFestivo = !!festivosCache[key];
       const items = mapa[key]||[];
-      const chips = items.slice(0,3).map(a => {
+      const chips = items.map(a => {
         let cls='otros';
         if (a.tipo==='Vacaciones') cls='vacaciones';
         else if (a.tipo==='Permiso médico') cls='permiso';
@@ -2594,7 +2596,7 @@ async function renderCalendario() {
         else if (a.tipo==='Compensación de horas'||a.tipo==='Asuntos propios') cls='comp';
         return `<span class="cal-chip ${cls}" title="${a.emp} — ${a.tipo}">${a.emp.split(' ')[0]}</span>`;
       }).join('');
-      const mas = items.length>3 ? `<span style="font-size:10px;color:var(--gris-texto)">+${items.length-3} más</span>` : '';
+      const mas = '';
       const festivoChip = esFestivo ? `<span class="cal-chip festivo" title="🎉 ${festivosCache[key].nombre||'Festivo'}">🎉${festivosCache[key].nombre ? ' '+festivosCache[key].nombre : ''}</span>` : '';
       const estiloFestivo = esFestivo ? 'background:#fff7f7;border-color:#fca5a5;' : '';
       const clickFestivo = `onclick="toggleFestivoCalendario('${key}')"`;
@@ -2850,9 +2852,8 @@ async function exportarCalendarioPDF() {
     let texto = String(diaActual);
     if (ausencias.length) {
       const nl = String.fromCharCode(10);
-      const abrev = a => a.emp.split('_')[0] + ' (' + (a.tipo === 'Vacaciones' ? 'Vac' : a.tipo === 'Baja medica' ? 'Baja' : a.tipo === 'Baja laboral' ? 'B.Lab' : a.tipo === 'Permiso medico' ? 'Perm' : a.tipo === 'Compensacion de horas' ? 'Comp' : 'Otro') + ')';
-      texto += nl + ausencias.slice(0, 3).map(abrev).join(nl);
-      if (ausencias.length > 3) texto += nl + '+' + (ausencias.length - 3) + ' mas';
+      const abrev = a => a.emp.replace(/_/g,' ') + ' (' + (a.tipo === 'Vacaciones' ? 'Vac' : a.tipo === 'Baja médica' ? 'Baja' : a.tipo === 'Baja laboral' ? 'B.Lab' : a.tipo === 'Permiso médico' ? 'Perm' : a.tipo === 'Compensación de horas' ? 'Comp' : a.tipo === 'Asuntos propios' ? 'A.P.' : 'Otro') + ')';
+      texto += nl + ausencias.map(abrev).join(nl);
     }
     semana[posEnSemana] = texto;
     diaActual++;
