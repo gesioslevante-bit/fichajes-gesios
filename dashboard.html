@@ -2848,15 +2848,7 @@ async function exportarCalendarioPDF() {
 
   for (let pos = offset; pos < offset + totalDias; pos++) {
     const posEnSemana = pos % 7;
-    const key = anyo + '-' + String(mes + 1).padStart(2, '0') + '-' + String(diaActual).padStart(2, '0');
-    const ausencias = mapa[key] || [];
-    let texto = String(diaActual);
-    if (ausencias.length) {
-      const nl = String.fromCharCode(10);
-      const abrev = a => a.emp.replace(/_/g,' ') + ' (' + (a.tipo === 'Vacaciones' ? 'Vac' : a.tipo === 'Baja médica' ? 'Baja' : a.tipo === 'Baja laboral' ? 'B.Lab' : a.tipo === 'Permiso médico' ? 'Perm' : a.tipo === 'Compensación de horas' ? 'Comp' : a.tipo === 'Asuntos propios' ? 'A.P.' : 'Otro') + ')';
-      texto += nl + ausencias.map(abrev).join(nl);
-    }
-    semana[posEnSemana] = texto;
+    semana[posEnSemana] = String(diaActual);
     diaActual++;
 
     if (posEnSemana === 6 || diaActual > totalDias) {
@@ -2865,12 +2857,16 @@ async function exportarCalendarioPDF() {
     }
   }
 
+  let maxAusenciasDia = 0;
+  Object.keys(mapa).forEach(k => { if (k.startsWith(anyo + '-' + String(mes+1).padStart(2,'0'))) maxAusenciasDia = Math.max(maxAusenciasDia, mapa[k].length); });
+  const alturaFila = Math.max(18, 11 + maxAusenciasDia * 4.2);
+
   doc.autoTable({
     startY: 22,
     head: head,
     body: body,
     theme: 'grid',
-    styles: { fontSize: 7, cellPadding: 2, valign: 'top', minCellHeight: 18 },
+    styles: { fontSize: 7, cellPadding: 2, valign: 'top', minCellHeight: alturaFila },
     headStyles: { fillColor: [26, 86, 160], textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 8 },
     columnStyles: {
       0: { cellWidth: 'auto' }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 'auto' },
@@ -2878,18 +2874,41 @@ async function exportarCalendarioPDF() {
     },
     didParseCell: function(data) {
       if (data.section === 'body' && data.cell.raw) {
-        const text = data.cell.raw;
-        const dayNum = parseInt(text);
+        const dayNum = parseInt(data.cell.raw);
         if (dayNum) {
           const key = anyo + '-' + String(mes + 1).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
           if (key === hoy) {
             data.cell.styles.fillColor = [255, 251, 230];
           }
           if (mapa[key] && mapa[key].length) {
-            data.cell.styles.fillColor = [240, 247, 255];
+            data.cell.styles.fillColor = [248, 250, 252];
           }
+          data.cell.styles.fontStyle = 'bold';
         }
       }
+    },
+    didDrawCell: function(data) {
+      if (data.section !== 'body' || !data.cell.raw) return;
+      const dayNum = parseInt(data.cell.raw);
+      if (!dayNum) return;
+      const key = anyo + '-' + String(mes + 1).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
+      const ausencias = mapa[key] || [];
+      if (!ausencias.length) return;
+      const abrevTipo = t => t === 'Vacaciones' ? 'Vac' : t === 'Baja médica' ? 'Baja' : t === 'Baja laboral' ? 'B.Lab' : t === 'Permiso médico' ? 'Perm' : t === 'Compensación de horas' ? 'Comp' : t === 'Asuntos propios' ? 'A.P.' : 'Otro';
+      let ty = data.cell.y + 8;
+      const tx = data.cell.x + 1.5;
+      const maxW = data.cell.width - 3;
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'normal');
+      ausencias.forEach(a => {
+        const color = colores[a.tipo] || colores['Otros'];
+        const linea = a.emp.replace(/_/g,' ') + ' (' + abrevTipo(a.tipo) + ')';
+        doc.setTextColor(...color);
+        const partido = doc.splitTextToSize(linea, maxW);
+        doc.text(partido[0], tx, ty);
+        ty += 3.6;
+      });
+      doc.setTextColor(0, 0, 0);
     }
   });
 
