@@ -344,7 +344,6 @@ tbody tr:hover { background: var(--gris-fondo); }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 
 </head>
@@ -567,7 +566,6 @@ tbody tr:hover { background: var(--gris-fondo); }
           </div>
           <button class="btn btn-primario" onclick="exportarITSS()">⬇️ Generar archivo ITSS</button>
           <button class="btn btn-primario" onclick="exportarPDF()" style="background:#c0392b;margin-top:6px;">📄 Generar informe PDF</button>
-          <button class="btn btn-primario" onclick="exportarExcel()" style="background:#217346;margin-top:6px;">📊 Generar informe Excel</button>
         </div>
       </div>
     </div>
@@ -2351,138 +2349,6 @@ async function exportarPDF() {
   }
 }
 
-async function exportarExcel() {
-  const desde = document.getElementById('itss-desde').value;
-  const hasta = document.getElementById('itss-hasta').value;
-  const empFiltro = document.getElementById('itss-empleado').value;
-  if (!desde || !hasta) { toast('Selecciona el período de fechas', 'error'); return; }
-
-  toast('Generando Excel...', 'ok');
-  try {
-    const siteId = await cargarSiteId();
-    let url = `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=1000&$filter=fields/Timestamp ge '${desde}T00:00:00Z' and fields/Timestamp le '${hasta}T23:59:59Z'`;
-    if (empFiltro) url += ` and fields/EmpleadoID eq '${empFiltro}'`;
-    const resp = await graphCall(url);
-    const fichajes = resp.value || [];
-
-    if (!empleadosCache || !empleadosCache.length) { await cargarEmpleados(); }
-    const empMap = {};
-    (empleadosCache || []).forEach(e => { empMap[e.fields.Title] = e.fields; });
-
-    let urlAus = `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/FechaInicio le '${hasta}T23:59:59Z' and fields/FechaFin ge '${desde}T00:00:00Z'`;
-    if (empFiltro) urlAus += ` and fields/EmpleadoID eq '${empFiltro}'`;
-    const respAus = await graphCall(urlAus);
-    const ausenciasPeriodo = respAus.value || [];
-
-    const compMap = {};
-    ausenciasPeriodo.filter(c => c.fields.TipoAusencia === 'Compensación de horas').forEach(c => {
-      const emp = c.fields.EmpleadoID || '';
-      const horas = parseFloat(c.fields.HorasCompensadas) || 0;
-      compMap[emp] = (compMap[emp] || 0) + horas;
-    });
-
-    const jornadas = {};
-    fichajes.forEach(f => {
-      const campos = f.fields;
-      const dia = campos.Timestamp.slice(0,10);
-      const key = campos.EmpleadoID + '_' + dia;
-      if (!jornadas[key]) jornadas[key] = { emp: campos.EmpleadoID, dia, entradas: [], salidas: [] };
-      if (campos.TipoFichaje === 'ENTRADA') jornadas[key].entradas.push(campos.Timestamp);
-      else jornadas[key].salidas.push(campos.Timestamp);
-    });
-
-    const ausenciaPorDiaEmp = {};
-    const unDia = 86400000;
-    ausenciasPeriodo.forEach(a => {
-      const f = a.fields;
-      let cursor = new Date(Math.max(new Date(f.FechaInicio), new Date(desde + 'T00:00:00Z')));
-      const fin = new Date(Math.min(new Date(f.FechaFin), new Date(hasta + 'T00:00:00Z')));
-      while (cursor <= fin) {
-        const diaStr = cursor.toISOString().slice(0,10);
-        ausenciaPorDiaEmp[f.EmpleadoID + '_' + diaStr] = f.TipoAusencia;
-        cursor = new Date(cursor.getTime() + unDia);
-      }
-    });
-
-    const diasConActividad = new Set();
-    Object.values(jornadas).forEach(j => diasConActividad.add(j.dia));
-    Object.keys(ausenciaPorDiaEmp).forEach(k => diasConActividad.add(k.split('_').slice(-1)[0]));
-
-    const empleadosParaFiltro = empFiltro ? [empFiltro] : Object.keys(empMap);
-
-    let filas = [];
-    Array.from(diasConActividad).sort().forEach(dia => {
-      const trabajaronHoy = new Set();
-      Object.values(jornadas).filter(j => j.dia === dia).forEach(j => {
-        trabajaronHoy.add(j.emp);
-        const empDatos = empMap[j.emp] || {};
-        const nif = empDatos.NIF || '—';
-        const jornadaH = parseFloat(empDatos.HorasJornada) || 8;
-        const entrada = j.entradas[0] ? new Date(j.entradas[0]).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '—';
-        const salida  = j.salidas[j.salidas.length-1] ? new Date(j.salidas[j.salidas.length-1]).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '—';
-        let horas = 0, extras = 0;
-        if (j.entradas[0] && j.salidas.length) {
-          const diffMs = new Date(j.salidas[j.salidas.length-1]) - new Date(j.entradas[0]);
-          const diffH = diffMs / 3600000;
-          horas = +diffH.toFixed(2);
-          const umbral = jornadaH + 0.25;
-          extras = diffH > umbral ? +(diffH - jornadaH).toFixed(2) : 0;
-        }
-        filas.push({
-          Fecha: dia, Empleado: j.emp, NIF: nif, Estado: 'Trabajó',
-          Entrada: entrada, Salida: salida, 'Horas trabajadas': horas, 'Horas extra': extras
-        });
-      });
-      empleadosParaFiltro.forEach(emp => {
-        const tipo = ausenciaPorDiaEmp[emp + '_' + dia];
-        if (tipo && !trabajaronHoy.has(emp)) {
-          const empDatos = empMap[emp] || {};
-          filas.push({
-            Fecha: dia, Empleado: emp, NIF: empDatos.NIF || '—', Estado: 'Ausencia: ' + tipo,
-            Entrada: '—', Salida: '—', 'Horas trabajadas': '—', 'Horas extra': '—'
-          });
-        }
-      });
-    });
-
-    filas.sort((a,b) => a.Fecha !== b.Fecha ? a.Fecha.localeCompare(b.Fecha) : a.Empleado.localeCompare(b.Empleado));
-
-    // Resumen por empleado (solo horas trabajadas, sin contar ausencias)
-    const totalesPorEmp = {};
-    filas.forEach(r => {
-      if (r.Estado === 'Trabajó') {
-        if (!totalesPorEmp[r.Empleado]) totalesPorEmp[r.Empleado] = { horas: 0, extras: 0 };
-        totalesPorEmp[r.Empleado].horas += r['Horas trabajadas'];
-        totalesPorEmp[r.Empleado].extras += r['Horas extra'];
-      }
-    });
-    const resumen = Object.entries(totalesPorEmp).map(([emp, t]) => {
-      const comp = compMap[emp] || 0;
-      const netas = Math.max(0, t.extras - comp);
-      return {
-        Empleado: emp,
-        'Horas trabajadas': +t.horas.toFixed(2),
-        'Horas extra brutas': +t.extras.toFixed(2),
-        'Horas compensadas': +comp.toFixed(2),
-        'Horas extra netas': +netas.toFixed(2)
-      };
-    });
-
-    const wb = XLSX.utils.book_new();
-    const wsDetalle = XLSX.utils.json_to_sheet(filas);
-    wsDetalle['!cols'] = [{wch:12},{wch:26},{wch:14},{wch:22},{wch:10},{wch:10},{wch:14},{wch:12}];
-    XLSX.utils.book_append_sheet(wb, wsDetalle, 'Día a día');
-
-    const wsResumen = XLSX.utils.json_to_sheet(resumen);
-    wsResumen['!cols'] = [{wch:26},{wch:16},{wch:18},{wch:18},{wch:16}];
-    XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen por empleado');
-
-    XLSX.writeFile(wb, `InformeJornada_${desde}_${hasta}.xlsx`);
-    toast('✓ Informe Excel generado', 'ok');
-  } catch(err) {
-    toast('Error: ' + err.message, 'error');
-  }
-}
 
 
 // ════════════════════════════════════════
