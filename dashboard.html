@@ -427,7 +427,7 @@ tbody tr:hover { background: var(--gris-fondo); }
       </div>
       <div class="kpis" id="kpis-resumen">
         <div class="kpi"><div class="kpi-valor" id="kpi-total-empleados">—</div><div class="kpi-label">Empleados</div></div>
-        <div class="kpi verde"><div class="kpi-valor" id="kpi-trabajando">—</div><div class="kpi-label">Trabajando ahora</div></div>
+        <div class="kpi verde"><div class="kpi-valor" id="kpi-trabajando">—</div><div class="kpi-label">Trabajando ahora</div><div id="kpi-trabajando-nombres" style="font-size:10px;color:var(--gris-texto);margin-top:4px;line-height:1.4"></div></div>
         <div class="kpi"><div class="kpi-valor" id="kpi-horas-mes">—</div><div class="kpi-label">Horas este mes</div></div>
         <div class="kpi naranja"><div class="kpi-valor" id="kpi-ausencias-pend">—</div><div class="kpi-label">Ausencias pendientes</div></div>
       </div>
@@ -860,11 +860,20 @@ const FECHA_INICIO_SISTEMA = new Date('2026-06-12T00:00:00');
 // ════════════════════════════════════════
 // CONFIGURACIÓN
 // ════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// 🏢 CONFIGURACIÓN DE EMPRESA — cambiar SOLO esto para clonar la
+// app a otra empresa con su propia licencia Microsoft 365.
+// Pasos: 1) crear un App Registration en Azure AD de la empresa
+// nueva, 2) crear el sitio SharePoint con las mismas listas
+// (Fichajes, Ausencias, Empleados, Festivos), 3) rellenar aquí
+// abajo, 4) publicar en un repo GitHub Pages propio.
+// ═══════════════════════════════════════════════════════════════
 const CONFIG = {
   clientId: '33fe1962-33ad-41a8-b647-82e649491105',
   tenantId: 'dc0719cf-1b7a-426b-a68d-e1ac59ba08d7',
   authority: 'https://login.microsoftonline.com/dc0719cf-1b7a-426b-a68d-e1ac59ba08d7',
   siteUrl: 'https://gesiolevante.sharepoint.com',
+  redirectUri: 'https://gesioslevante-bit.github.io/fichajes-gesios/dashboard.html',
   scopes: ['https://graph.microsoft.com/Sites.ReadWrite.All',
            'https://graph.microsoft.com/Files.ReadWrite.All',
            'https://graph.microsoft.com/User.Read']
@@ -883,7 +892,7 @@ async function inicializar() {
     auth: {
       clientId: CONFIG.clientId,
       authority: CONFIG.authority,
-      redirectUri: 'https://gesioslevante-bit.github.io/fichajes-gesios/dashboard.html'
+      redirectUri: CONFIG.redirectUri
     },
     cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
   };
@@ -1196,14 +1205,16 @@ async function cargarResumen() {
       if (!ultimoPorEmp[emp] || f.fields.Timestamp > ultimoPorEmp[emp].fields.Timestamp)
         ultimoPorEmp[emp] = f;
     });
-    const trabajando = Object.values(ultimoPorEmp).filter(f => f.fields.TipoFichaje === 'ENTRADA').length;
-    document.getElementById('kpi-trabajando').textContent = trabajando;
+    const trabajandoLista = Object.values(ultimoPorEmp).filter(f => f.fields.TipoFichaje === 'ENTRADA').map(f => f.fields.EmpleadoID);
+    document.getElementById('kpi-trabajando').textContent = trabajandoLista.length;
+    document.getElementById('kpi-trabajando-nombres').textContent = trabajandoLista.length ? trabajandoLista.join(', ') : '';
 
     // Tabla reciente (últimos 10)
     const recientes = [...fichHoy].sort((a,b) => b.fields.Timestamp.localeCompare(a.fields.Timestamp)).slice(0,10);
     renderTablaFichajes('tabla-reciente', recientes, 5);
   } catch(e) {
     document.getElementById('kpi-trabajando').textContent = '—';
+    document.getElementById('kpi-trabajando-nombres').textContent = '';
     document.getElementById('tabla-reciente').innerHTML = `<tr><td colspan="5" class="vacio">Error: ${e.message}</td></tr>`;
   }
 
@@ -2120,12 +2131,15 @@ async function exportarPDF() {
     const empMap = {};
     (empleadosCache || []).forEach(e => { empMap[e.fields.Title] = e.fields; });
 
+    // Cargar TODAS las ausencias aprobadas que se solapen con el período (para el informe día a día)
+    let urlAus = `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/FechaInicio le '${hasta}T23:59:59Z' and fields/FechaFin ge '${desde}T00:00:00Z'`;
+    if (empFiltro) urlAus += ` and fields/EmpleadoID eq '${empFiltro}'`;
+    const respAus = await graphCall(urlAus);
+    const ausenciasPeriodo = respAus.value || [];
+
     // Cargar horas compensadas aprobadas en el período
-    let urlComp = `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/TipoAusencia eq 'Compensación de horas' and fields/FechaInicio ge '${desde}T00:00:00Z' and fields/FechaFin le '${hasta}T23:59:59Z'`;
-    if (empFiltro) urlComp += ` and fields/EmpleadoID eq '${empFiltro}'`;
-    const respComp = await graphCall(urlComp);
     const compMap = {};
-    (respComp.value || []).forEach(c => {
+    ausenciasPeriodo.filter(c => c.fields.TipoAusencia === 'Compensación de horas').forEach(c => {
       const emp = c.fields.EmpleadoID || '';
       const horas = parseFloat(c.fields.HorasCompensadas) || 0;
       compMap[emp] = (compMap[emp] || 0) + horas;
@@ -2198,57 +2212,90 @@ async function exportarPDF() {
       return [j.emp, nif, j.dia, entrada, salida, horas, extras];
     });
 
-    // Ordenar por empleado → fecha
-    rows.sort((a,b) => {
-      if (a[0] !== b[0]) return a[0].localeCompare(b[0]);
-      return a[2].localeCompare(b[2]);
+    // Expandir ausencias día a día dentro del rango del informe
+    const ausenciaPorDiaEmp = {}; // { 'emp_YYYY-MM-DD': tipo }
+    const unDia = 86400000;
+    ausenciasPeriodo.forEach(a => {
+      const f = a.fields;
+      let cursor = new Date(Math.max(new Date(f.FechaInicio), new Date(desde + 'T00:00:00Z')));
+      const fin = new Date(Math.min(new Date(f.FechaFin), new Date(hasta + 'T00:00:00Z')));
+      while (cursor <= fin) {
+        const diaStr = cursor.toISOString().slice(0,10);
+        ausenciaPorDiaEmp[f.EmpleadoID + '_' + diaStr] = f.TipoAusencia;
+        cursor = new Date(cursor.getTime() + unDia);
+      }
     });
 
-    // Calcular totales por empleado (necesario antes de construir la tabla)
+    // Construir filas: una por empleado que trabajó, más una por empleado con ausencia ese día
+    const diasConActividad = new Set();
+    Object.values(jornadas).forEach(j => diasConActividad.add(j.dia));
+    Object.keys(ausenciaPorDiaEmp).forEach(k => diasConActividad.add(k.split('_').slice(-1)[0]));
+
+    const empleadosParaFiltro = empFiltro ? [empFiltro] : Object.keys(empMap);
+
+    let rows = [];
+    Array.from(diasConActividad).sort().forEach(dia => {
+      // Empleados que trabajaron ese día
+      const trabajaronHoy = new Set();
+      Object.values(jornadas).filter(j => j.dia === dia).forEach(j => {
+        trabajaronHoy.add(j.emp);
+        const empDatos = empMap[j.emp] || {};
+        const nif = empDatos.NIF || '—';
+        const jornadaH = parseFloat(empDatos.HorasJornada) || 8;
+        const entrada = j.entradas[0] ? new Date(j.entradas[0]).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '—';
+        const salida  = j.salidas[j.salidas.length-1] ? new Date(j.salidas[j.salidas.length-1]).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '—';
+        let horas = '—', extras = '—';
+        if (j.entradas[0] && j.salidas.length) {
+          const diffMs = new Date(j.salidas[j.salidas.length-1]) - new Date(j.entradas[0]);
+          const diffH = diffMs / 3600000;
+          horas = diffH.toFixed(2) + 'h';
+          const umbral = jornadaH + 0.25;
+          extras = diffH > umbral ? (diffH - jornadaH).toFixed(2) + 'h' : '0.00h';
+        }
+        rows.push([j.emp, nif, dia, entrada, salida, horas, extras]);
+      });
+      // Empleados con ausencia ese día (que no hayan fichado también ese día)
+      empleadosParaFiltro.forEach(emp => {
+        const tipo = ausenciaPorDiaEmp[emp + '_' + dia];
+        if (tipo && !trabajaronHoy.has(emp)) {
+          const empDatos = empMap[emp] || {};
+          const nif = empDatos.NIF || '—';
+          rows.push([emp, nif, dia, '—', '—', 'AUSENCIA: ' + tipo, '—']);
+        }
+      });
+    });
+
+    // Ordenar por fecha → empleado
+    rows.sort((a,b) => {
+      if (a[2] !== b[2]) return a[2].localeCompare(b[2]);
+      return a[0].localeCompare(b[0]);
+    });
+
+    // Calcular totales por empleado (solo cuenta horas trabajadas, no ausencias)
     const totalesPorEmp = {};
     rows.forEach(r => {
       const emp = r[0];
       if (!totalesPorEmp[emp]) totalesPorEmp[emp] = { horas: 0, extras: 0 };
-      totalesPorEmp[emp].horas  += parseFloat(r[5]) || 0;
-      totalesPorEmp[emp].extras += parseFloat(r[6]) || 0;
+      if (!r[5].startsWith('AUSENCIA')) {
+        totalesPorEmp[emp].horas  += parseFloat(r[5]) || 0;
+        totalesPorEmp[emp].extras += parseFloat(r[6]) || 0;
+      }
     });
 
-    // Agrupar por empleado (cabecera azul oscuro) y fecha (cabecera azul claro)
+    // Agrupar visualmente por fecha (cabecera azul oscuro) — dentro, cada empleado es una fila
     const rowsConGrupos = [];
-    let empActualPDF = null;
-    let fechaActual = null;
-    rows.forEach((r, idx) => {
-      // Subtotal del empleado anterior antes de cambiar
-      if (r[0] !== empActualPDF && empActualPDF !== null) {
-        const t = totalesPorEmp[empActualPDF];
-        const comp = compMap[empActualPDF] || 0;
-        const netas = Math.max(0, t.extras - comp);
-        let subtotalTxt = `Subtotal ${empActualPDF}:  ${t.horas.toFixed(2)}h trabajadas  |  Extras: ${t.extras.toFixed(2)}h`;
-        if (comp > 0) subtotalTxt += `  |  Comp: ${comp.toFixed(2)}h  |  Netas: ${netas.toFixed(2)}h`;
-        rowsConGrupos.push([{ content: subtotalTxt, colSpan: 7, styles: { fillColor: [245, 248, 255], fontStyle: 'bold', textColor: [26,86,160], fontSize: 8, halign: 'right' } }]);
-        rowsConGrupos.push([{ content: '', colSpan: 7, styles: { cellPadding: 1, fillColor: 255 } }]);
+    let fechaActualPDF = null;
+    rows.forEach((r) => {
+      if (r[2] !== fechaActualPDF) {
+        const fechaRow = new Date(r[2] + 'T12:00:00Z').toLocaleDateString('es-ES', {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
+        rowsConGrupos.push([{ content: fechaRow, colSpan: 7, styles: { fillColor: [26, 86, 160], fontStyle: 'bold', textColor: 255, fontSize: 9 } }]);
+        fechaActualPDF = r[2];
       }
-      // Cabecera de empleado
-      if (r[0] !== empActualPDF) {
-        rowsConGrupos.push([{ content: r[0], colSpan: 7, styles: { fillColor: [26, 86, 160], fontStyle: 'bold', textColor: 255, fontSize: 9 } }]);
-        empActualPDF = r[0];
-        fechaActual = null;
-      }
-      // Cabecera de fecha
-      const fechaRow = new Date(r[2]).toLocaleDateString('es-ES', {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
-      if (r[2] !== fechaActual) {
-        rowsConGrupos.push([{ content: fechaRow, colSpan: 7, styles: { fillColor: [230, 238, 255], fontStyle: 'bold', textColor: [26,86,160], fontSize: 8 } }]);
-        fechaActual = r[2];
-      }
-      rowsConGrupos.push(r);
-      // Subtotal del último empleado
-      if (idx === rows.length - 1) {
-        const t = totalesPorEmp[empActualPDF];
-        const comp = compMap[empActualPDF] || 0;
-        const netas = Math.max(0, t.extras - comp);
-        let subtotalTxt = `Subtotal ${empActualPDF}:  ${t.horas.toFixed(2)}h trabajadas  |  Extras: ${t.extras.toFixed(2)}h`;
-        if (comp > 0) subtotalTxt += `  |  Comp: ${comp.toFixed(2)}h  |  Netas: ${netas.toFixed(2)}h`;
-        rowsConGrupos.push([{ content: subtotalTxt, colSpan: 7, styles: { fillColor: [245, 248, 255], fontStyle: 'bold', textColor: [26,86,160], fontSize: 8, halign: 'right' } }]);
+      const esAusencia = r[5].startsWith('AUSENCIA');
+      if (esAusencia) {
+        rowsConGrupos.push(r.map((c, i) => i === 5 ? { content: c, styles: { textColor: [180, 60, 30], fontStyle: 'bold' } } : c));
+      } else {
+        rowsConGrupos.push(r);
       }
     });
 
