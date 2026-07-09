@@ -2194,24 +2194,6 @@ async function exportarPDF() {
     doc.text(`Generado: ${new Date().toLocaleString('es-ES')}`, pageW - 12, 44, { align: 'right' });
 
     // ── Tabla ──
-    const rows = Object.values(jornadas).map(j => {
-      const empDatos = empMap[j.emp] || {};
-      const nif = empDatos.NIF || '—';
-      const jornadaH = parseFloat(empDatos.HorasJornada) || 8;
-      const entrada = j.entradas[0] ? new Date(j.entradas[0]).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '—';
-      const salida  = j.salidas[j.salidas.length-1] ? new Date(j.salidas[j.salidas.length-1]).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '—';
-      let horas = '—';
-      let extras = '—';
-      if (j.entradas[0] && j.salidas.length) {
-        const diffMs = new Date(j.salidas[j.salidas.length-1]) - new Date(j.entradas[0]);
-        const diffH = diffMs / 3600000;
-        horas = diffH.toFixed(2) + 'h';
-        const umbral = jornadaH + 0.25;
-        extras = diffH > umbral ? (diffH - jornadaH).toFixed(2) + 'h' : '0.00h'; // umbral activa el cómputo, extras = tiempo real - jornada
-      }
-      return [j.emp, nif, j.dia, entrada, salida, horas, extras];
-    });
-
     // Expandir ausencias día a día dentro del rango del informe
     const ausenciaPorDiaEmp = {}; // { 'emp_YYYY-MM-DD': tipo }
     const unDia = 86400000;
