@@ -1452,10 +1452,10 @@ async function exportarMesCSV() {
     const data = await graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=500&$filter=${filtro}`);
     const items = (data.value || []).sort((a,b) => a.fields.Timestamp.localeCompare(b.fields.Timestamp));
     const empData = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
-    let compFiltroMes = `fields/Estado eq 'APROBADA' and fields/TipoAusencia eq 'Compensación de horas' and fields/FechaInicio ge '${desde}' and fields/FechaFin le '${hasta}'`;
-    if (emp) compFiltroMes += ` and fields/EmpleadoID eq '${emp}'`;
-    const compDataMes = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=${compFiltroMes}`);
-    const csv = generarCSVFichajes(items, empData.value || [], compDataMes.value || []);
+    let ausFiltroMes = `fields/Estado eq 'APROBADA' and fields/FechaInicio le '${hasta}' and fields/FechaFin ge '${desde}'`;
+    if (emp) ausFiltroMes += ` and fields/EmpleadoID eq '${emp}'`;
+    const ausDataMes = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=${ausFiltroMes}`);
+    const csv = generarCSVFichajes(items, empData.value || [], ausDataMes.value || [], desde, hasta, emp);
     descargarCSV(csv, `fichajes_${mes}${emp ? '_' + emp.replace(/ /g,'_') : ''}.csv`);
     toast('✓ CSV descargado', 'ok');
   } catch(err) {
@@ -1472,8 +1472,8 @@ async function exportarAnoCSV() {
     const data = await graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=2000&$filter=fields/Timestamp ge '${desde}' and fields/Timestamp le '${hasta}'`);
     const items = (data.value || []).sort((a,b) => a.fields.Timestamp.localeCompare(b.fields.Timestamp));
     const empData2 = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
-    const compDataAno = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/TipoAusencia eq 'Compensación de horas' and fields/FechaInicio ge '${desde}' and fields/FechaFin le '${hasta}'`);
-    const csv = generarCSVFichajes(items, empData2.value || [], compDataAno.value || []);
+    const ausDataAno = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=1000&$filter=fields/Estado eq 'APROBADA' and fields/FechaInicio le '${hasta}' and fields/FechaFin ge '${desde}'`);
+    const csv = generarCSVFichajes(items, empData2.value || [], ausDataAno.value || [], desde, hasta, null);
     descargarCSV(csv, `fichajes_${anyo}.csv`);
     toast('✓ CSV anual descargado', 'ok');
   } catch(err) {
@@ -1651,21 +1651,38 @@ function calcularHorasMes(fichajes) {
   return Math.round(totalMs / 3600000);
 }
 
-function generarCSVFichajes(items, empleadosCache, compensaciones) {
+function generarCSVFichajes(items, empleadosCache, ausencias, desde, hasta, empFiltro) {
   // Mapa de jornada por empleado
   const jornadaMap = {};
   (empleadosCache || []).forEach(e => {
     jornadaMap[e.fields.Title] = parseFloat(e.fields.HorasJornada) || 8;
   });
+  const empleadosLista = empFiltro ? [empFiltro] : (empleadosCache || []).map(e => e.fields.Title);
 
-  // Mapa de horas compensadas por empleado
+  // Mapa de horas compensadas por empleado (solo tipo Compensación de horas)
   const compMap = {};
-  (compensaciones || []).forEach(c => {
+  (ausencias || []).filter(c => c.fields.TipoAusencia === 'Compensación de horas').forEach(c => {
     const emp = c.fields.EmpleadoID || '';
     compMap[emp] = (compMap[emp] || 0) + (parseFloat(c.fields.HorasCompensadas) || 0);
   });
 
-  // Agrupar por empleado + día
+  // Expandir todas las ausencias día a día dentro del rango
+  const ausenciaPorDiaEmp = {};
+  const unDia = 86400000;
+  const desdeD = new Date(desde.slice(0,10) + 'T00:00:00Z');
+  const hastaD = new Date(hasta.slice(0,10) + 'T00:00:00Z');
+  (ausencias || []).forEach(a => {
+    const f = a.fields;
+    let cursor = new Date(Math.max(new Date(f.FechaInicio), desdeD));
+    const fin = new Date(Math.min(new Date(f.FechaFin), hastaD));
+    while (cursor <= fin) {
+      const diaStr = cursor.toISOString().slice(0,10);
+      ausenciaPorDiaEmp[f.EmpleadoID + '_' + diaStr] = f.TipoAusencia;
+      cursor = new Date(cursor.getTime() + unDia);
+    }
+  });
+
+  // Agrupar fichajes por empleado + día
   const jornadas = {};
   items.forEach(item => {
     const f = item.fields;
@@ -1676,32 +1693,47 @@ function generarCSVFichajes(items, empleadosCache, compensaciones) {
     else if (f.TipoFichaje === 'SALIDA') jornadas[key].salidas.push(f.Timestamp);
   });
 
-  let csv = 'Empleado;Fecha;Entrada;Salida;Horas_Trabajadas;Horas_Extras\n';
-  Object.values(jornadas)
-    .sort((a, b) => (a.dia + a.emp).localeCompare(b.dia + b.emp))
-    .forEach(j => {
+  // Días con actividad (fichaje o ausencia)
+  const diasConActividad = new Set();
+  Object.values(jornadas).forEach(j => diasConActividad.add(j.dia));
+  Object.keys(ausenciaPorDiaEmp).forEach(k => diasConActividad.add(k.split('_').slice(-1)[0]));
+
+  let csv = 'Empleado;Fecha;Estado;Entrada;Salida;Horas_Trabajadas;Horas_Extras\n';
+
+  Array.from(diasConActividad).sort().forEach(dia => {
+    const fechaFmt = new Date(dia + 'T12:00:00Z').toLocaleDateString('es-ES', {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
+    csv += `\n=== ${fechaFmt.toUpperCase()} ===;;;;;;\n`;
+
+    const trabajaronHoy = new Set();
+    Object.values(jornadas).filter(j => j.dia === dia).sort((a,b) => a.emp.localeCompare(b.emp)).forEach(j => {
+      trabajaronHoy.add(j.emp);
       const entrada = j.entradas[0]
         ? new Date(j.entradas[0]).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'})
         : '—';
       const salida = j.salidas.length
         ? new Date(j.salidas[j.salidas.length - 1]).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'})
         : '—';
-
-      let horasTrabajadas = '—';
-      let horasExtras = '—';
-
+      let horasTrabajadas = '—', horasExtras = '—';
       if (j.entradas[0] && j.salidas.length) {
         const diffMs = new Date(j.salidas[j.salidas.length - 1]) - new Date(j.entradas[0]);
         const diffH = diffMs / 3600000;
         const jornadaH = jornadaMap[j.emp] || 8;
-        const umbral = jornadaH + 0.25; // 15 min de margen
+        const umbral = jornadaH + 0.25;
         horasTrabajadas = diffH.toFixed(2);
-        horasExtras = diffH > umbral ? (diffH - jornadaH).toFixed(2) : '0.00'; // umbral activa el cómputo, extras = tiempo real - jornada
+        horasExtras = diffH > umbral ? (diffH - jornadaH).toFixed(2) : '0.00';
       }
-
-      const fecha = new Date(j.dia).toLocaleDateString('es-ES');
-      csv += `${j.emp};${fecha};${entrada};${salida};${horasTrabajadas};${horasExtras}\n`;
+      csv += `${j.emp};${fechaCorta(dia)};Trabajó;${entrada};${salida};${horasTrabajadas};${horasExtras}\n`;
     });
+
+    empleadosLista.filter(e => {
+      const tipo = ausenciaPorDiaEmp[e + '_' + dia];
+      return tipo && !trabajaronHoy.has(e);
+    }).sort().forEach(e => {
+      const tipo = ausenciaPorDiaEmp[e + '_' + dia];
+      csv += `${e};${fechaCorta(dia)};Ausencia: ${tipo};—;—;—;—\n`;
+    });
+  });
+
   // Añadir resumen de compensaciones si hay
   if (Object.keys(compMap).length > 0) {
     csv += '\n;; COMPENSACIONES APROBADAS EN EL PERÍODO;;;\n';
@@ -1712,6 +1744,10 @@ function generarCSVFichajes(items, empleadosCache, compensaciones) {
     csv += `;;Total compensado;;;-${totalComp.toFixed(2)};\n`;
   }
   return csv;
+}
+
+function fechaCorta(diaISO) {
+  return new Date(diaISO + 'T12:00:00Z').toLocaleDateString('es-ES');
 }
 
 function descargarCSV(csv, nombre) {
