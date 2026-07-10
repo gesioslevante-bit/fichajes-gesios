@@ -1719,8 +1719,8 @@ function generarCSVFichajes(items, empleadosCache, ausencias, desde, hasta, empF
         const diffH = diffMs / 3600000;
         const jornadaH = jornadaMap[j.emp] || 8;
         const umbral = jornadaH + 0.25;
-        horasTrabajadas = diffH.toFixed(2);
-        horasExtras = diffH > umbral ? (diffH - jornadaH).toFixed(2) : '0.00';
+        horasTrabajadas = formatoHoras(diffH);
+        horasExtras = diffH > umbral ? formatoHoras(diffH - jornadaH) : '0:00';
       }
       csv += `${j.emp};${fechaCorta(dia)};Trabajó;${entrada};${salida};${horasTrabajadas};${horasExtras}\n`;
     });
@@ -1738,16 +1738,24 @@ function generarCSVFichajes(items, empleadosCache, ausencias, desde, hasta, empF
   if (Object.keys(compMap).length > 0) {
     csv += '\n;; COMPENSACIONES APROBADAS EN EL PERÍODO;;;\n';
     Object.entries(compMap).forEach(([emp, h]) => {
-      csv += `${emp};;;Compensación aprobada;-${h.toFixed(2)};\n`;
+      csv += `${emp};;;Compensación aprobada;-${formatoHoras(h)};\n`;
     });
     const totalComp = Object.values(compMap).reduce((a,b) => a+b, 0);
-    csv += `;;Total compensado;;;-${totalComp.toFixed(2)};\n`;
+    csv += `;;Total compensado;;;-${formatoHoras(totalComp)};\n`;
   }
   return csv;
 }
 
 function fechaCorta(diaISO) {
   return new Date(diaISO + 'T12:00:00Z').toLocaleDateString('es-ES');
+}
+
+function formatoHoras(horasDecimal) {
+  const signo = horasDecimal < 0 ? '-' : '';
+  const abs = Math.abs(horasDecimal);
+  const h = Math.floor(abs);
+  const m = Math.round((abs - h) * 60);
+  return `${signo}${h}:${String(m).padStart(2,'0')}`;
 }
 
 function descargarCSV(csv, nombre) {
@@ -2266,9 +2274,9 @@ async function exportarPDF() {
         if (j.entradas[0] && j.salidas.length) {
           const diffMs = new Date(j.salidas[j.salidas.length-1]) - new Date(j.entradas[0]);
           const diffH = diffMs / 3600000;
-          horas = diffH.toFixed(2) + 'h';
+          horas = formatoHoras(diffH);
           const umbral = jornadaH + 0.25;
-          extras = diffH > umbral ? (diffH - jornadaH).toFixed(2) + 'h' : '0.00h';
+          extras = diffH > umbral ? formatoHoras(diffH - jornadaH) : '0:00';
         }
         rows.push([j.emp, nif, dia, entrada, salida, horas, extras]);
       });
@@ -2359,8 +2367,8 @@ async function exportarPDF() {
       const comp = compMap[emp] || 0;
       const netas = Math.max(0, t.extras - comp);
       doc.setTextColor(26, 86, 160);
-      let linea = `${emp}  —  Horas: ${t.horas.toFixed(2)}h  |  Extras: ${t.extras.toFixed(2)}h`;
-      if (comp > 0) linea += `  |  Comp: ${comp.toFixed(2)}h  |  Netas: ${netas.toFixed(2)}h`;
+      let linea = `${emp}  —  Horas: ${formatoHoras(t.horas)}  |  Extras: ${formatoHoras(t.extras)}`;
+      if (comp > 0) linea += `  |  Comp: ${formatoHoras(comp)}  |  Netas: ${formatoHoras(netas)}`;
       doc.text(linea, pageW - 12, finalY, { align: 'right' });
       finalY += 6;
     });
@@ -2374,8 +2382,8 @@ async function exportarPDF() {
     // Total general
     doc.setFontSize(10);
     doc.setTextColor(26, 86, 160);
-    let resumenTexto = `TOTAL  —  Horas: ${totalHoras.toFixed(2)}h  |  Extras brutas: ${totalExtrasB.toFixed(2)}h`;
-    if (totalCompensadas > 0) resumenTexto += `  |  Compensadas: ${totalCompensadas.toFixed(2)}h  |  Extras netas: ${extrasNetas.toFixed(2)}h`;
+    let resumenTexto = `TOTAL  —  Horas: ${formatoHoras(totalHoras)}  |  Extras brutas: ${formatoHoras(totalExtrasB)}`;
+    if (totalCompensadas > 0) resumenTexto += `  |  Compensadas: ${formatoHoras(totalCompensadas)}  |  Extras netas: ${formatoHoras(extrasNetas)}`;
     doc.text(resumenTexto, pageW - 12, finalY, { align: 'right' });
 
     doc.save(`InformeJornada_${desde}_${hasta}.pdf`);
