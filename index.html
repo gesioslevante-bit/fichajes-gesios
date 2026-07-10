@@ -1045,11 +1045,20 @@
 // ══════════════════════════════════════════
 const FECHA_INICIO_SISTEMA = new Date('2026-06-12T00:00:00');
 
+// ═══════════════════════════════════════════════════════════════
+// 🏢 CONFIGURACIÓN DE EMPRESA — cambiar SOLO esto para clonar la
+// app a otra empresa con su propia licencia Microsoft 365.
+// Pasos: 1) crear un App Registration en Azure AD de la empresa
+// nueva, 2) crear el sitio SharePoint con las mismas listas
+// (Fichajes, Ausencias, Empleados, Festivos), 3) rellenar aquí
+// abajo, 4) publicar en un repo GitHub Pages propio.
+// ═══════════════════════════════════════════════════════════════
 const CONFIG = {
   clientId: '33fe1962-33ad-41a8-b647-82e649491105',
   tenantId: 'dc0719cf-1b7a-426b-a68d-e1ac59ba08d7',
   siteUrl: 'https://gesiolevante.sharepoint.com',
   authority: 'https://login.microsoftonline.com/dc0719cf-1b7a-426b-a68d-e1ac59ba08d7',
+  redirectUri: 'https://gesioslevante-bit.github.io/fichajes-gesios/',
   scopes: ['https://graph.microsoft.com/Sites.ReadWrite.All',
            'https://graph.microsoft.com/Files.ReadWrite.All',
            'https://graph.microsoft.com/User.Read']
@@ -1078,7 +1087,7 @@ async function inicializarMSAL() {
     auth: {
       clientId: CONFIG.clientId,
       authority: CONFIG.authority,
-      redirectUri: 'https://gesioslevante-bit.github.io/fichajes-gesios/'
+      redirectUri: CONFIG.redirectUri
     },
     cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
   };
