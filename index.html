@@ -1175,6 +1175,10 @@ async function buscarEmpleadoPorPIN(pin) {
 }
 
 async function crearFichaje(tipo) {
+  if (!estado.gps) {
+    throw new Error('SIN_GPS: no se puede registrar un fichaje sin ubicación');
+  }
+
   const siteId = await obtenerSiteId();
   const ahora = new Date();
   const titulo = `${estado.empleado.Title}_${ahora.toISOString().replace(/[:.]/g,'-')}`;
@@ -1186,8 +1190,8 @@ async function crearFichaje(tipo) {
       EmpleadoNombre: `${estado.empleado.Nombre} ${estado.empleado.Apellidos}`,
       TipoFichaje: tipo,
       Timestamp: ahora.toISOString(),
-      Latitud: estado.gps ? estado.gps.lat : null,
-      Longitud: estado.gps ? estado.gps.lng : null,
+      Latitud: estado.gps.lat,
+      Longitud: estado.gps.lng,
       Observaciones: ''
     }
   };
@@ -1286,7 +1290,8 @@ async function subirJustificante(archivo) {
 // ══════════════════════════════════════════
 function iniciarGPS() {
   if (!navigator.geolocation) {
-    document.getElementById('info-gps').textContent = '📍 GPS no disponible';
+    estado.gps = null;
+    document.getElementById('info-gps').textContent = '📍 GPS no disponible en este dispositivo';
     return;
   }
   navigator.geolocation.watchPosition(
@@ -1295,10 +1300,56 @@ function iniciarGPS() {
       document.getElementById('info-gps').textContent = `📍 Ubicación obtenida`;
     },
     err => {
-      document.getElementById('info-gps').textContent = '📍 Sin acceso al GPS';
+      estado.gps = null;
+      if (err.code === err.PERMISSION_DENIED) {
+        document.getElementById('info-gps').textContent = '📍 Permiso de ubicación denegado. Actívalo en los ajustes para poder fichar';
+      } else {
+        document.getElementById('info-gps').textContent = '📍 Sin acceso al GPS';
+      }
     },
     { enableHighAccuracy: true }
   );
+}
+
+// Comprueba la ubicación justo antes de fichar (más fiable que confiar solo
+// en el watchPosition de fondo, que puede no haber dado ningún resultado aún).
+function obtenerGPSObligatorio() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject({ tipo: 'no-soportado' });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        estado.gps = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        resolve(estado.gps);
+      },
+      err => {
+        estado.gps = null;
+        if (err.code === err.PERMISSION_DENIED) {
+          reject({ tipo: 'denegado' });
+        } else if (err.code === err.TIMEOUT) {
+          reject({ tipo: 'timeout' });
+        } else {
+          reject({ tipo: 'error' });
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+  });
+}
+
+function mensajeErrorGPS(motivo) {
+  switch (motivo) {
+    case 'no-soportado':
+      return '❌ Tu dispositivo no soporta geolocalización. No se puede fichar sin ubicación.';
+    case 'denegado':
+      return '❌ Debes activar el permiso de ubicación para fichar (según el consentimiento firmado). Revisa los ajustes de tu navegador/teléfono.';
+    case 'timeout':
+      return '❌ No se pudo obtener tu ubicación a tiempo. Comprueba que el GPS esté activado e inténtalo de nuevo.';
+    default:
+      return '❌ No se pudo obtener tu ubicación. No se puede fichar sin ella.';
+  }
 }
 
 // ══════════════════════════════════════════
@@ -1484,7 +1535,17 @@ async function calcularHorasMes() {
 // ══════════════════════════════════════════
 // FICHAJE
 // ══════════════════════════════════════════
-function confirmarFichaje(tipo) {
+async function confirmarFichaje(tipo) {
+  mostrarCargando('Comprobando ubicación...');
+  try {
+    await obtenerGPSObligatorio();
+  } catch (e) {
+    ocultarCargando();
+    mostrarToast(mensajeErrorGPS(e.tipo), 'error');
+    return;
+  }
+  ocultarCargando();
+
   estado.pendienteFichaje = tipo;
   const ahora = new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
 
@@ -1521,7 +1582,11 @@ async function ejecutarFichaje() {
     await cargarDashboard();
   } catch(e) {
     ocultarCargando();
-    mostrarToast('❌ Error al registrar. Inténtalo de nuevo.', 'error');
+    if (e.message && e.message.startsWith('SIN_GPS')) {
+      mostrarToast('❌ No se pudo confirmar tu ubicación. No se ha registrado el fichaje.', 'error');
+    } else {
+      mostrarToast('❌ Error al registrar. Inténtalo de nuevo.', 'error');
+    }
     console.error(e);
   }
 }
