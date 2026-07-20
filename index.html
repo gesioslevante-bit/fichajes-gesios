@@ -157,7 +157,7 @@
   .teclado-pin {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
+    gap: 14px;
     margin-top: 8px;
   }
   .tecla {
@@ -165,14 +165,18 @@
     border: none;
     border-radius: var(--radio-btn);
     padding: 18px;
-    font-size: 22px;
+    min-height: 64px;
+    font-size: 24px;
     font-weight: 600;
     color: var(--gris-oscuro);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: transform 0.1s, background 0.1s;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    user-select: none;
   }
-  .tecla:active { transform: scale(0.94); background: #dde8dd; }
+  .tecla:active { transform: scale(0.92); background: #dde8dd; }
   .tecla.borrar { font-size: 18px; color: var(--gris-medio); }
   .tecla.vacia { background: transparent; pointer-events: none; }
 
