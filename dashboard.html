@@ -709,6 +709,7 @@ tbody tr:hover { background: var(--gris-fondo); }
         <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#ef4444;display:inline-block"></span> Baja médica / laboral</span>
         <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#8b5cf6;display:inline-block"></span> Comp. / Asuntos propios</span>
         <span style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:3px;background:#6b7280;display:inline-block"></span> Otros</span>
+        <span style="display:flex;align-items:center;gap:4px">⏳ En curso, sin fecha de alta aún</span>
       </div>
     </div>
 
@@ -2619,8 +2620,13 @@ async function renderCalendario() {
   const hasta  = ultimoDia.toISOString().slice(0,10);
   try {
     // Cargar ausencias y festivos en paralelo
+    // Nota: no filtramos por FechaFin en el servidor, porque una baja sin fecha
+    // de fin todavía puesta (en curso) quedaría excluida por el filtro 'ge'.
+    // Filtramos solo por Estado y por que haya empezado antes de fin de mes;
+    // el solape real con el mes se calcula abajo, tratando "sin FechaFin" como
+    // que la ausencia sigue en curso hasta hoy (o hasta fin del mes visible).
     const [dataAus, dataFest] = await Promise.all([
-      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/FechaFin ge '${desde}T00:00:00Z' and fields/FechaInicio le '${hasta}T23:59:59Z'`),
+      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/FechaInicio le '${hasta}T23:59:59Z'`),
       (async () => {
         const token = await obtenerToken();
         const r = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Festivos/items?$expand=fields&$top=500`, { headers: { Authorization: 'Bearer ' + token } });
@@ -2633,11 +2639,15 @@ async function renderCalendario() {
     (dataAus.value || []).forEach(item => {
       const f = item.fields;
       const fi = new Date(f.FechaInicio);
-      const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(fi);
-      for (let d=new Date(fi); d<=ff; d.setDate(d.getDate()+1)) {
+      // Sin FechaFin = baja en curso: se pinta hasta el final del mes que se está viendo.
+      const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(ultimoDia);
+      const inicioLoop = fi < primerDia ? new Date(primerDia) : fi;
+      const finLoop = ff > ultimoDia ? new Date(ultimoDia) : ff;
+      if (finLoop < inicioLoop) return; // no solapa con el mes visible
+      for (let d=new Date(inicioLoop); d<=finLoop; d.setDate(d.getDate()+1)) {
         const key = d.toISOString().slice(0,10);
         if (!mapa[key]) mapa[key]=[];
-        mapa[key].push({ emp:f.EmpleadoID||'—', tipo:f.TipoAusencia||'Otros' });
+        mapa[key].push({ emp:f.EmpleadoID||'—', tipo:f.TipoAusencia||'Otros', enCurso: !f.FechaFin });
       }
     });
 
@@ -2668,7 +2678,9 @@ async function renderCalendario() {
         else if (a.tipo==='Permiso médico') cls='permiso';
         else if (a.tipo==='Baja médica'||a.tipo==='Baja laboral') cls='baja';
         else if (a.tipo==='Compensación de horas'||a.tipo==='Asuntos propios') cls='comp';
-        return `<span class="cal-chip ${cls}" title="${a.emp} — ${a.tipo}">${a.emp.split(' ')[0]}</span>`;
+        const enCursoTag = a.enCurso ? ' ⏳' : '';
+        const estiloEnCurso = a.enCurso ? 'border:1px dashed rgba(255,255,255,.8);' : '';
+        return `<span class="cal-chip ${cls}" style="${estiloEnCurso}" title="${a.emp} — ${a.tipo}${a.enCurso ? ' (en curso, sin fecha de alta aún)' : ''}">${a.emp.split(' ')[0]}${enCursoTag}</span>`;
       }).join('');
       const mas = '';
       const festivoChip = esFestivo ? `<span class="cal-chip festivo" title="🎉 ${festivosCache[key].nombre||'Festivo'}">🎉${festivosCache[key].nombre ? ' '+festivosCache[key].nombre : ''}</span>` : '';
