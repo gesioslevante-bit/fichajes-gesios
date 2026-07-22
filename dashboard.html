@@ -2652,13 +2652,12 @@ async function renderCalendario() {
   const hasta  = ultimoDia.toISOString().slice(0,10);
   try {
     // Cargar ausencias y festivos en paralelo
-    // Nota: no filtramos por FechaFin en el servidor, porque una baja sin fecha
-    // de fin todavía puesta (en curso) quedaría excluida por el filtro 'ge'.
-    // Filtramos solo por Estado y por que haya empezado antes de fin de mes;
-    // el solape real con el mes se calcula abajo, tratando "sin FechaFin" como
-    // que la ausencia sigue en curso hasta hoy (o hasta fin del mes visible).
+    // Nota: no usamos $filter de servidor aquí porque SharePoint tarda en indexar
+    // registros recién creados para consultas filtradas (se nota sobre todo con altas
+    // masivas, como el cierre de empresa). Traemos todo y filtramos en el cliente,
+    // igual que hace el historial de bajas.
     const [dataAus, dataFest] = await Promise.all([
-      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/FechaInicio le '${hasta}T23:59:59Z'`),
+      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=999`),
       (async () => {
         const token = await obtenerToken();
         const r = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Festivos/items?$expand=fields&$top=500`, { headers: { Authorization: 'Bearer ' + token } });
@@ -2674,6 +2673,7 @@ async function renderCalendario() {
     const mapa = {};
     (dataAus.value || []).forEach(item => {
       const f = item.fields;
+      if (f.Estado !== 'APROBADA') return;
       const fi = new Date(f.FechaInicio);
       // Sin FechaFin = baja en curso: se pinta solo hasta hoy (se va añadiendo día a día hasta que se registre el alta).
       const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(limiteEnCurso);
