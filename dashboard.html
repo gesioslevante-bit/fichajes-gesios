@@ -760,6 +760,10 @@ tbody tr:hover { background: var(--gris-fondo); }
       <div class="card" style="margin-bottom:16px">
         <div class="card-header"><h3>Nueva ausencia</h3></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px">
+          <div style="grid-column:1/-1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="baja-todos" onchange="toggleBajaTodos()" style="width:16px;height:16px">
+            <label for="baja-todos" style="font-size:13px;cursor:pointer">🏢 Cierre de empresa — aplicar esta ausencia a <b>todos los trabajadores</b> a la vez</label>
+          </div>
           <div>
             <label style="font-size:12px;color:var(--gris-texto);display:block;margin-bottom:4px">Empleado</label>
             <select id="baja-empleado" style="width:100%;padding:8px;border:1px solid var(--gris-borde);border-radius:8px;font-size:13px"></select>
@@ -2447,32 +2451,60 @@ async function cargarBajas() {
   }
 }
 
+function toggleBajaTodos() {
+  const marcado = document.getElementById('baja-todos').checked;
+  const sel = document.getElementById('baja-empleado');
+  sel.disabled = marcado;
+  sel.style.opacity = marcado ? '0.5' : '1';
+}
+
 async function registrarBaja() {
+  const todos  = document.getElementById('baja-todos').checked;
   const emp    = document.getElementById('baja-empleado').value;
   const tipo   = document.getElementById('baja-tipo').value;
   const inicio = document.getElementById('baja-inicio').value;
   const fin    = document.getElementById('baja-fin').value;
   const obs    = document.getElementById('baja-obs').value.trim();
-  if (!emp)    { toast('Selecciona un empleado', 'error'); return; }
+  if (!todos && !emp) { toast('Selecciona un empleado', 'error'); return; }
   if (!inicio) { toast('Indica la fecha de inicio', 'error'); return; }
-  const campos = {
-    EmpleadoID: emp, TipoAusencia: tipo,
-    FechaInicio: inicio + 'T00:00:00Z',
-    Estado: 'APROBADA', Motivo: obs || tipo
-  };
-  if (fin) campos.FechaFin = fin + 'T23:59:59Z';
+
+  const listaEmpleados = todos
+    ? (empleadosCache.length ? empleadosCache.map(e => e.fields.Title) : (await (async () => { await cargarEmpleadosEnSelectores(); return empleadosCache.map(e => e.fields.Title); })()))
+    : [emp];
+
+  if (todos && !listaEmpleados.length) { toast('No hay empleados cargados', 'error'); return; }
+  if (todos && !confirm(`Se registrará "${tipo}" del ${inicio}${fin ? ' al ' + fin : ''} para los ${listaEmpleados.length} trabajadores. ¿Continuar?`)) return;
+
   try {
     const token = await obtenerToken();
-    const resp = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Ausencias/items`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields: campos })
-    });
-    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error?.message || resp.statusText); }
-    toast('✓ Baja registrada', 'ok');
+    let ok = 0, fallos = 0;
+    for (const empleadoId of listaEmpleados) {
+      const campos = {
+        EmpleadoID: empleadoId, TipoAusencia: tipo,
+        FechaInicio: inicio + 'T00:00:00Z',
+        Estado: 'APROBADA', Motivo: obs || tipo
+      };
+      if (fin) campos.FechaFin = fin + 'T23:59:59Z';
+      try {
+        const resp = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Ausencias/items`, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: campos })
+        });
+        if (!resp.ok) throw new Error();
+        ok++;
+      } catch { fallos++; }
+    }
+    if (todos) {
+      toast(fallos ? `✓ ${ok} registradas, ${fallos} con error` : `✓ Ausencia registrada para ${ok} trabajadores`, fallos ? 'error' : 'ok');
+    } else {
+      toast('✓ Baja registrada', 'ok');
+    }
     document.getElementById('baja-inicio').value = '';
     document.getElementById('baja-fin').value = '';
     document.getElementById('baja-obs').value = '';
+    document.getElementById('baja-todos').checked = false;
+    toggleBajaTodos();
     cargarBajas();
   } catch(err) { toast('Error: ' + err.message, 'error'); }
 }
@@ -2635,12 +2667,16 @@ async function renderCalendario() {
     ]);
 
     // Mapa de ausencias por día
+    const hoyDate = new Date();
+    hoyDate.setHours(0,0,0,0);
+    // Límite real para bajas en curso: hoy, o el fin de mes si el mes visible ya ha terminado
+    const limiteEnCurso = hoyDate < ultimoDia ? hoyDate : new Date(ultimoDia);
     const mapa = {};
     (dataAus.value || []).forEach(item => {
       const f = item.fields;
       const fi = new Date(f.FechaInicio);
-      // Sin FechaFin = baja en curso: se pinta hasta el final del mes que se está viendo.
-      const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(ultimoDia);
+      // Sin FechaFin = baja en curso: se pinta solo hasta hoy (se va añadiendo día a día hasta que se registre el alta).
+      const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(limiteEnCurso);
       const inicioLoop = fi < primerDia ? new Date(primerDia) : fi;
       const finLoop = ff > ultimoDia ? new Date(ultimoDia) : ff;
       if (finLoop < inicioLoop) return; // no solapa con el mes visible
