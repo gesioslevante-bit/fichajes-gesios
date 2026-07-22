@@ -2647,7 +2647,10 @@ async function renderCalendario() {
   const mes  = parseInt(document.getElementById('cal-mes').value);
   const anyo = parseInt(document.getElementById('cal-anyo').value);
   const primerDia = new Date(anyo, mes, 1);
-  const ultimoDia = new Date(anyo, mes+1, 0);
+  // Fin del último día del mes (23:59:59.999 local), no su inicio — si comparásemos
+  // contra el inicio del día, el último día del mes se quedaba excluido al comparar
+  // con las fechas de las ausencias (guardadas en UTC), como pasaba con el día 31.
+  const ultimoDia = new Date(anyo, mes+1, 0, 23, 59, 59, 999);
   const desde = primerDia.toISOString().slice(0,10);
   const hasta  = ultimoDia.toISOString().slice(0,10);
   try {
