@@ -520,7 +520,13 @@ tbody tr:hover { background: var(--gris-fondo); }
         </div>
         <div class="tabla-wrap">
           <table>
-            <thead><tr><th>Empleado</th><th>Tipo</th><th>Fecha inicio</th><th>Fecha fin</th><th>Motivo</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <thead><tr>
+              <th class="th-sort" onclick="ordenarAusencias('empleado')" style="cursor:pointer;user-select:none">Empleado <span id="sortaus-empleado"></span></th>
+              <th class="th-sort" onclick="ordenarAusencias('tipo')" style="cursor:pointer;user-select:none">Tipo <span id="sortaus-tipo"></span></th>
+              <th class="th-sort" onclick="ordenarAusencias('inicio')" style="cursor:pointer;user-select:none">Fecha inicio <span id="sortaus-inicio"></span></th>
+              <th class="th-sort" onclick="ordenarAusencias('fin')" style="cursor:pointer;user-select:none">Fecha fin <span id="sortaus-fin"></span></th>
+              <th>Motivo</th><th>Estado</th><th>Acciones</th>
+            </tr></thead>
             <tbody id="tabla-ausencias"><tr><td colspan="7" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
           </table>
         </div>
@@ -804,7 +810,13 @@ tbody tr:hover { background: var(--gris-fondo); }
         </div>
         <div class="tabla-wrap">
           <table>
-            <thead><tr><th>Empleado</th><th>Tipo</th><th>Inicio</th><th>Fin</th><th>Días</th><th>Obs.</th><th>Acciones</th></tr></thead>
+            <thead><tr>
+              <th class="th-sort" onclick="ordenarBajas('empleado')" style="cursor:pointer;user-select:none">Empleado <span id="sort-empleado"></span></th>
+              <th class="th-sort" onclick="ordenarBajas('tipo')" style="cursor:pointer;user-select:none">Tipo <span id="sort-tipo"></span></th>
+              <th class="th-sort" onclick="ordenarBajas('inicio')" style="cursor:pointer;user-select:none">Inicio <span id="sort-inicio"></span></th>
+              <th class="th-sort" onclick="ordenarBajas('fin')" style="cursor:pointer;user-select:none">Fin <span id="sort-fin"></span></th>
+              <th>Días</th><th>Obs.</th><th>Acciones</th>
+            </tr></thead>
             <tbody id="tabla-bajas"><tr><td colspan="7" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
           </table>
         </div>
@@ -1151,6 +1163,7 @@ async function cargarEmpleados() {
   try {
     const data = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
     empleadosCache = data.value || [];
+    empleadosCache.sort((a,b) => (a.fields.Title||'').localeCompare(b.fields.Title||''));
     if (!empleadosCache.length) {
       tbody.innerHTML = '<tr><td colspan="6" class="vacio"><div class="ico">👥</div>No hay empleados</td></tr>';
       return;
@@ -1175,6 +1188,7 @@ async function cargarEmpleadosEnSelectores() {
   try {
     const data = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
     empleadosCache = data.value || [];
+    empleadosCache.sort((a,b) => (a.fields.Title||'').localeCompare(b.fields.Title||''));
     const opts = empleadosCache.map(e => `<option value="${e.fields.Title}">${e.fields.Title}</option>`).join('');
     ['filtro-empleado','filtro-ausencia-empleado','exp-empleado-mes','itss-empleado','baja-empleado','nomina-empleado','fadmin-empleado'].forEach(id => {
       const sel = document.getElementById(id);
@@ -1355,6 +1369,10 @@ function resetarFiltros() {
 // ════════════════════════════════════════
 // AUSENCIAS
 // ════════════════════════════════════════
+let ausenciasCache = [];
+let ausSortCol = 'inicio';
+let ausSortDir = 'desc';
+
 async function cargarAusencias() {
   const tbody = document.getElementById('tabla-ausencias');
   tbody.innerHTML = '<tr><td colspan="7" class="cargando"><span class="spinner"></span> Cargando...</td></tr>';
@@ -1372,39 +1390,69 @@ async function cargarAusencias() {
     const data = await graphCall(
       `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=200${filtro}`
     );
-    const items = (data.value || []).sort((a,b) => {
-      return (b.fields.FechaSolicitud || '').localeCompare(a.fields.FechaSolicitud || '');
-    });
-
-    if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="vacio"><div class="ico">📅</div>No hay solicitudes</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = items.map(item => {
-      const f = item.fields;
-      const estado = f.Estado || 'PENDIENTE';
-      const badgeClass = estado === 'APROBADA' ? 'badge-verde' : estado === 'RECHAZADA' ? 'badge-rojo' : 'badge-naranja';
-      const horasComp = f.HorasCompensadas ? `<br><small style="color:var(--verde)">−${f.HorasCompensadas}h compensadas</small>` : '';
-      const acciones = estado === 'PENDIENTE'
-        ? `<div class="acciones-ausencia">
-            <button class="btn btn-verde" onclick="gestionarAusencia('${item.id}','APROBADA','${f.TipoAusencia || ''}')" title="Aprobar">✓ Aprobar</button>
-            <button class="btn btn-rojo"  onclick="gestionarAusencia('${item.id}','RECHAZADA','')" title="Rechazar">✗ Rechazar</button>
-           </div>`
-        : `<span style="font-size:12px;color:var(--gris-texto)">—${horasComp}</span>`;
-      return `<tr>
-        <td><strong>${f.EmpleadoID || '—'}</strong></td>
-        <td>${f.TipoAusencia || '—'}</td>
-        <td>${formatFecha(f.FechaInicio)}</td>
-        <td>${formatFecha(f.FechaFin)}</td>
-        <td>${f.Motivo || '—'}${f.JustificanteURL ? ` <a href="${f.JustificanteURL}" target="_blank" title="Ver justificante" style="margin-left:4px">📎</a>` : ''}</td>
-        <td><span class="badge ${badgeClass}"><span class="dot"></span>${estado}</span></td>
-        <td>${acciones}</td>
-      </tr>`;
-    }).join('');
+    ausenciasCache = data.value || [];
+    renderTablaAusencias();
   } catch(err) {
     tbody.innerHTML = `<tr><td colspan="7" class="vacio">Error: ${err.message}</td></tr>`;
   }
+}
+
+function ordenarAusencias(col) {
+  if (ausSortCol === col) {
+    ausSortDir = ausSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    ausSortCol = col;
+    ausSortDir = col === 'empleado' || col === 'tipo' ? 'asc' : 'desc';
+  }
+  renderTablaAusencias();
+}
+
+function renderTablaAusencias() {
+  const tbody = document.getElementById('tabla-ausencias');
+  ['empleado','tipo','inicio','fin'].forEach(c => {
+    const el = document.getElementById('sortaus-' + c);
+    if (el) el.textContent = c === ausSortCol ? (ausSortDir === 'asc' ? '▲' : '▼') : '';
+  });
+  const dir = ausSortDir === 'asc' ? 1 : -1;
+  const getVal = (item, col) => {
+    const f = item.fields;
+    if (col === 'empleado') return (f.EmpleadoID || '').toLowerCase();
+    if (col === 'tipo') return (f.TipoAusencia || '').toLowerCase();
+    if (col === 'inicio') return f.FechaInicio || '';
+    if (col === 'fin') return f.FechaFin || '';
+    return '';
+  };
+  const items = [...ausenciasCache].sort((a,b) => {
+    const va = getVal(a, ausSortCol), vb = getVal(b, ausSortCol);
+    return va.localeCompare(vb) * dir;
+  });
+
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="vacio"><div class="ico">📅</div>No hay solicitudes</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = items.map(item => {
+    const f = item.fields;
+    const estado = f.Estado || 'PENDIENTE';
+    const badgeClass = estado === 'APROBADA' ? 'badge-verde' : estado === 'RECHAZADA' ? 'badge-rojo' : 'badge-naranja';
+    const horasComp = f.HorasCompensadas ? `<br><small style="color:var(--verde)">−${f.HorasCompensadas}h compensadas</small>` : '';
+    const acciones = estado === 'PENDIENTE'
+      ? `<div class="acciones-ausencia">
+          <button class="btn btn-verde" onclick="gestionarAusencia('${item.id}','APROBADA','${f.TipoAusencia || ''}')" title="Aprobar">✓ Aprobar</button>
+          <button class="btn btn-rojo"  onclick="gestionarAusencia('${item.id}','RECHAZADA','')" title="Rechazar">✗ Rechazar</button>
+         </div>`
+      : `<span style="font-size:12px;color:var(--gris-texto)">—${horasComp}</span>`;
+    return `<tr>
+      <td><strong>${f.EmpleadoID || '—'}</strong></td>
+      <td>${f.TipoAusencia || '—'}</td>
+      <td>${formatFecha(f.FechaInicio)}</td>
+      <td>${formatFecha(f.FechaFin)}</td>
+      <td>${f.Motivo || '—'}${f.JustificanteURL ? ` <a href="${f.JustificanteURL}" target="_blank" title="Ver justificante" style="margin-left:4px">📎</a>` : ''}</td>
+      <td><span class="badge ${badgeClass}"><span class="dot"></span>${estado}</span></td>
+      <td>${acciones}</td>
+    </tr>`;
+  }).join('');
 }
 
 async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
@@ -1903,6 +1951,7 @@ async function cargarControlHoras() {
 
     let html = '<div class="horas-grid">';
 
+    empleados.sort((a,b) => (a.fields.Title||'').localeCompare(b.fields.Title||''));
     empleados.forEach(e => {
       const nombre = e.fields.Title;
       const horasAnualesContrato = parseFloat(e.fields.HorasAnuales) || 1800;
@@ -2055,6 +2104,7 @@ async function cargarVacaciones() {
 
     let html = '<div class="horas-grid">';
 
+    empleados.sort((a,b) => (a.fields.Title||'').localeCompare(b.fields.Title||''));
     empleados.forEach(e => {
       const nombre = e.fields.Title;
       const cupoVac = parseFloat(e.fields.CupoVacaciones) || CUPO_VACACIONES;
@@ -2403,6 +2453,10 @@ async function exportarPDF() {
 // ════════════════════════════════════════
 // BAJAS (registro manual admin)
 // ════════════════════════════════════════
+let bajasCache = [];
+let bajaSortCol = 'inicio';
+let bajaSortDir = 'desc';
+
 async function cargarBajas() {
   const tbody = document.getElementById('tabla-bajas');
   tbody.innerHTML = '<tr><td colspan="7" class="cargando"><span class="spinner"></span> Cargando...</td></tr>';
@@ -2410,45 +2464,76 @@ async function cargarBajas() {
     const data = await graphCall(
       `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=200`
     );
-    const items = (data.value || []).sort((a,b) =>
-      (b.fields.FechaInicio||'').localeCompare(a.fields.FechaInicio||''));
-    if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="vacio"><div class="ico">📋</div>No hay ausencias registradas</td></tr>';
-      return;
-    }
-    const badges = {
-      'Baja laboral':     '<span class="badge badge-rojo"><span class="dot"></span>Baja laboral</span>',
-      'Baja médica':      '<span class="badge badge-naranja"><span class="dot"></span>Baja médica</span>',
-      'Vacaciones':       '<span class="badge badge-azul"><span class="dot"></span>Vacaciones</span>',
-      'Permiso médico':   '<span class="badge badge-naranja"><span class="dot"></span>Permiso médico</span>',
-      'Asuntos propios':  '<span class="badge badge-morado"><span class="dot"></span>Asuntos propios</span>',
-      'Otros':            '<span class="badge badge-gris"><span class="dot"></span>Otros</span>'
-    };
-    tbody.innerHTML = items.map(item => {
-      const f = item.fields;
-      const fi = f.FechaInicio ? f.FechaInicio.slice(0,10) : '—';
-      const ff = f.FechaFin ? f.FechaFin.slice(0,10) : '<em style="color:var(--naranja)">En curso</em>';
-      let dias = '—';
-      if (f.FechaInicio && f.FechaFin) {
-        dias = Math.round((new Date(f.FechaFin) - new Date(f.FechaInicio)) / 86400000) + 1;
-      }
-      const badge = badges[f.TipoAusencia] || `<span class="badge badge-gris"><span class="dot"></span>${f.TipoAusencia||'—'}</span>`;
-      return `<tr>
-        <td><strong>${f.EmpleadoID||'—'}</strong></td>
-        <td>${badge}</td>
-        <td>${fi}</td>
-        <td>${ff}</td>
-        <td>${dias}</td>
-        <td style="max-width:180px;white-space:normal;font-size:12px">${f.Motivo||'—'}${f.JustificanteURL ? ` <a href="${f.JustificanteURL}" target="_blank" title="Ver justificante">📎</a>` : ''}</td>
-        <td>
-          ${!f.FechaFin ? `<button class="btn btn-verde" onclick="darAltaBaja('${item.id}')">✓ Cerrar</button>` : ''}
-          <button class="btn btn-rojo" onclick="eliminarBaja('${item.id}')">🗑</button>
-        </td>
-      </tr>`;
-    }).join('');
+    bajasCache = data.value || [];
+    renderTablaBajas();
   } catch(err) {
     tbody.innerHTML = `<tr><td colspan="7" class="vacio">Error: ${err.message}</td></tr>`;
   }
+}
+
+function ordenarBajas(col) {
+  if (bajaSortCol === col) {
+    bajaSortDir = bajaSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    bajaSortCol = col;
+    bajaSortDir = col === 'empleado' || col === 'tipo' ? 'asc' : 'desc';
+  }
+  renderTablaBajas();
+}
+
+function renderTablaBajas() {
+  const tbody = document.getElementById('tabla-bajas');
+  ['empleado','tipo','inicio','fin'].forEach(c => {
+    const el = document.getElementById('sort-' + c);
+    if (el) el.textContent = c === bajaSortCol ? (bajaSortDir === 'asc' ? '▲' : '▼') : '';
+  });
+  const dir = bajaSortDir === 'asc' ? 1 : -1;
+  const getVal = (item, col) => {
+    const f = item.fields;
+    if (col === 'empleado') return (f.EmpleadoID || '').toLowerCase();
+    if (col === 'tipo') return (f.TipoAusencia || '').toLowerCase();
+    if (col === 'inicio') return f.FechaInicio || '';
+    if (col === 'fin') return f.FechaFin || '';
+    return '';
+  };
+  const items = [...bajasCache].sort((a,b) => {
+    const va = getVal(a, bajaSortCol), vb = getVal(b, bajaSortCol);
+    return va.localeCompare(vb) * dir;
+  });
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="vacio"><div class="ico">📋</div>No hay ausencias registradas</td></tr>';
+    return;
+  }
+  const badges = {
+    'Baja laboral':     '<span class="badge badge-rojo"><span class="dot"></span>Baja laboral</span>',
+    'Baja médica':      '<span class="badge badge-naranja"><span class="dot"></span>Baja médica</span>',
+    'Vacaciones':       '<span class="badge badge-azul"><span class="dot"></span>Vacaciones</span>',
+    'Permiso médico':   '<span class="badge badge-naranja"><span class="dot"></span>Permiso médico</span>',
+    'Asuntos propios':  '<span class="badge badge-morado"><span class="dot"></span>Asuntos propios</span>',
+    'Otros':            '<span class="badge badge-gris"><span class="dot"></span>Otros</span>'
+  };
+  tbody.innerHTML = items.map(item => {
+    const f = item.fields;
+    const fi = f.FechaInicio ? f.FechaInicio.slice(0,10) : '—';
+    const ff = f.FechaFin ? f.FechaFin.slice(0,10) : '<em style="color:var(--naranja)">En curso</em>';
+    let dias = '—';
+    if (f.FechaInicio && f.FechaFin) {
+      dias = Math.round((new Date(f.FechaFin) - new Date(f.FechaInicio)) / 86400000) + 1;
+    }
+    const badge = badges[f.TipoAusencia] || `<span class="badge badge-gris"><span class="dot"></span>${f.TipoAusencia||'—'}</span>`;
+    return `<tr>
+      <td><strong>${f.EmpleadoID||'—'}</strong></td>
+      <td>${badge}</td>
+      <td>${fi}</td>
+      <td>${ff}</td>
+      <td>${dias}</td>
+      <td style="max-width:180px;white-space:normal;font-size:12px">${f.Motivo||'—'}${f.JustificanteURL ? ` <a href="${f.JustificanteURL}" target="_blank" title="Ver justificante">📎</a>` : ''}</td>
+      <td>
+        ${!f.FechaFin ? `<button class="btn btn-verde" onclick="darAltaBaja('${item.id}')">✓ Cerrar</button>` : ''}
+        <button class="btn btn-rojo" onclick="eliminarBaja('${item.id}')">🗑</button>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 function toggleBajaTodos() {
@@ -2475,10 +2560,33 @@ async function registrarBaja() {
   if (todos && !listaEmpleados.length) { toast('No hay empleados cargados', 'error'); return; }
   if (todos && !confirm(`Se registrará "${tipo}" del ${inicio}${fin ? ' al ' + fin : ''} para los ${listaEmpleados.length} trabajadores. ¿Continuar?`)) return;
 
+  // Para el modo "todos", traemos las ausencias existentes y saltamos a quien ya
+  // tenga una ausencia aprobada que se solape con estas fechas, para no duplicar.
+  let existentesPorEmpleado = {};
+  if (todos) {
+    try {
+      const dataExist = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=999`);
+      const nuevoInicio = inicio, nuevoFin = fin || '9999-12-31';
+      (dataExist.value || []).forEach(item => {
+        const f = item.fields;
+        if (f.Estado !== 'APROBADA') return;
+        const exInicio = (f.FechaInicio || '').slice(0,10);
+        const exFin = f.FechaFin ? f.FechaFin.slice(0,10) : '9999-12-31';
+        if (!exInicio) return;
+        const solapa = exInicio <= nuevoFin && exFin >= nuevoInicio;
+        if (solapa) {
+          if (!existentesPorEmpleado[f.EmpleadoID]) existentesPorEmpleado[f.EmpleadoID] = [];
+          existentesPorEmpleado[f.EmpleadoID].push(item);
+        }
+      });
+    } catch { /* si falla la comprobación, seguimos sin bloquear el registro */ }
+  }
+
   try {
     const token = await obtenerToken();
-    let ok = 0, fallos = 0;
+    let ok = 0, fallos = 0, saltados = 0;
     for (const empleadoId of listaEmpleados) {
+      if (todos && existentesPorEmpleado[empleadoId]) { saltados++; continue; }
       const campos = {
         EmpleadoID: empleadoId, TipoAusencia: tipo,
         FechaInicio: inicio + 'T00:00:00Z',
@@ -2496,7 +2604,10 @@ async function registrarBaja() {
       } catch { fallos++; }
     }
     if (todos) {
-      toast(fallos ? `✓ ${ok} registradas, ${fallos} con error` : `✓ Ausencia registrada para ${ok} trabajadores`, fallos ? 'error' : 'ok');
+      let msg = `✓ ${ok} registradas`;
+      if (saltados) msg += `, ${saltados} ya tenían ausencia en esas fechas (no duplicadas)`;
+      if (fallos) msg += `, ${fallos} con error`;
+      toast(msg, fallos ? 'error' : 'ok');
     } else {
       toast('✓ Baja registrada', 'ok');
     }
