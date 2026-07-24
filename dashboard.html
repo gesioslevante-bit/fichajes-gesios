@@ -330,6 +330,10 @@ tbody tr:hover { background: var(--gris-fondo); }
 .horas-stat-val.verde { color: var(--verde); }
 .horas-stat-label { font-size: 11px; color: var(--gris-texto); margin-top: 2px; }
 .alerta-extras { background: var(--rojo-claro); border: 1px solid var(--rojo); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--rojo); font-weight: 600; margin-top: 10px; }
+.vac-detalle { margin-top: 10px; font-size: 12.5px; color: #555; }
+.vac-detalle summary { cursor: pointer; color: var(--azul, #2563eb); font-weight: 600; }
+.vac-detalle ul { margin: 6px 0 0; padding-left: 18px; }
+.vac-detalle li { margin-bottom: 3px; }
 .ok-extras { background: var(--verde-claro); border: 1px solid var(--verde); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--verde); font-weight: 600; margin-top: 10px; }
 
 .vacio .ico { font-size: 32px; margin-bottom: 8px; }
@@ -2110,9 +2114,15 @@ async function cargarVacaciones() {
 
       const dias = diasEntreFechas(inicioEfectivo, finEfectivo);
       const emp = f.EmpleadoID;
-      if (!usados[emp]) usados[emp] = { vacaciones: 0, asuntosPropios: 0 };
+      if (!usados[emp]) usados[emp] = { vacaciones: 0, asuntosPropios: 0, detalle: [] };
       if (esVac) usados[emp].vacaciones += dias;
       else usados[emp].asuntosPropios += dias;
+      usados[emp].detalle.push({
+        tipo: f.TipoAusencia,
+        inicio: f.FechaInicio.slice(0,10),
+        fin: f.FechaFin.slice(0,10),
+        dias
+      });
     });
 
     let html = '<div class="horas-grid">';
@@ -2169,6 +2179,13 @@ async function cargarVacaciones() {
 
           ${restanVac < 0 ? `<div class="alerta-extras">🚨 Ha superado el cupo de vacaciones (${Math.abs(restanVac)} día${Math.abs(restanVac)!==1?'s':''} de más)</div>` : ''}
           ${restanAP < 0 ? `<div class="alerta-extras">🚨 Ha superado el cupo de asuntos propios (${Math.abs(restanAP)} día${Math.abs(restanAP)!==1?'s':''} de más)</div>` : ''}
+          ${(usados[nombre] && usados[nombre].detalle.length) ? `
+          <details class="vac-detalle">
+            <summary>Ver ${usados[nombre].detalle.length} registro${usados[nombre].detalle.length!==1?'s':''} contabilizado${usados[nombre].detalle.length!==1?'s':''}</summary>
+            <ul>
+              ${usados[nombre].detalle.map(d => `<li>${d.tipo}: ${d.inicio} → ${d.fin} (${d.dias} día${d.dias!==1?'s':''})</li>`).join('')}
+            </ul>
+          </details>` : ''}
         </div>`;
     });
 
