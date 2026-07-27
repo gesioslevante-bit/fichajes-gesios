@@ -871,6 +871,13 @@ tbody tr:hover { background: var(--gris-fondo); }
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
+<div id="aviso-pdf" style="display:none;position:fixed;bottom:70px;right:20px;background:#fff;border:1px solid var(--gris-borde,#ddd);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:14px 16px;z-index:9999;max-width:280px;">
+  <div style="font-size:13px;color:#333;margin-bottom:8px;">📄 Justificante listo para <span id="aviso-pdf-nombre" style="font-weight:600"></span></div>
+  <div style="display:flex;gap:8px;">
+    <button onclick="descargarPDFPendiente()" style="flex:1;background:#1a56a0;color:#fff;border:none;border-radius:6px;padding:8px 10px;font-size:13px;cursor:pointer;">⬇️ Descargar PDF</button>
+    <button onclick="document.getElementById('aviso-pdf').style.display='none'" style="background:#f0f0f0;border:none;border-radius:6px;padding:8px 10px;font-size:13px;cursor:pointer;">✕</button>
+  </div>
+</div>
 
 <script>
 // ════════════════════════════════════════
@@ -1471,7 +1478,6 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
     }
   }
   try {
-    const itemOriginal = ausenciasCache.find(a => a.id === itemId);
     const campos = { Estado: nuevoEstado };
     if (horasCompensadas !== null) campos.HorasCompensadas = horasCompensadas;
     await graphPatch(
@@ -1480,8 +1486,15 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
     );
     toast(nuevoEstado === 'APROBADA' ? '✓ Ausencia aprobada' : '✗ Ausencia rechazada',
           nuevoEstado === 'APROBADA' ? 'ok' : 'error');
-    if (nuevoEstado === 'APROBADA' && itemOriginal) {
-      generarPDFPermiso({ ...itemOriginal.fields, ...campos }, itemId);
+    if (nuevoEstado === 'APROBADA') {
+      try {
+        const itemActualizado = await graphCall(`/sites/${siteId}/lists/Ausencias/items/${itemId}?$expand=fields`);
+        pdfPermisoPendiente = { fields: itemActualizado.fields, itemId };
+        document.getElementById('aviso-pdf-nombre').textContent = itemActualizado.fields.EmpleadoID || '';
+        document.getElementById('aviso-pdf').style.display = 'block';
+      } catch (errPdf) {
+        toast('Aprobado, pero no se pudieron cargar los datos del PDF: ' + errPdf.message, 'error');
+      }
     }
     await cargarAusencias();
     // Actualizar badge
@@ -1492,6 +1505,14 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
   } catch(err) {
     toast('Error: ' + err.message, 'error');
   }
+}
+
+let pdfPermisoPendiente = null;
+function descargarPDFPendiente() {
+  if (!pdfPermisoPendiente) return;
+  generarPDFPermiso(pdfPermisoPendiente.fields, pdfPermisoPendiente.itemId);
+  document.getElementById('aviso-pdf').style.display = 'none';
+  pdfPermisoPendiente = null;
 }
 
 function generarPDFPermiso(f, itemId) {
