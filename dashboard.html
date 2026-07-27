@@ -872,9 +872,9 @@ tbody tr:hover { background: var(--gris-fondo); }
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 <div id="aviso-pdf" style="display:none;position:fixed;bottom:70px;right:20px;background:#fff;border:1px solid var(--gris-borde,#ddd);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:14px 16px;z-index:9999;max-width:280px;">
-  <div style="font-size:13px;color:#333;margin-bottom:8px;">📄 Justificante listo para <span id="aviso-pdf-nombre" style="font-weight:600"></span></div>
+  <div style="font-size:13px;color:#333;margin-bottom:8px;">📄 Justificante guardado en la ficha de <span id="aviso-pdf-nombre" style="font-weight:600"></span></div>
   <div style="display:flex;gap:8px;">
-    <button onclick="descargarPDFPendiente()" style="flex:1;background:#1a56a0;color:#fff;border:none;border-radius:6px;padding:8px 10px;font-size:13px;cursor:pointer;">⬇️ Descargar PDF</button>
+    <button onclick="descargarPDFPendiente()" style="flex:1;background:#1a56a0;color:#fff;border:none;border-radius:6px;padding:8px 10px;font-size:13px;cursor:pointer;">⬇️ Copia local</button>
     <button onclick="document.getElementById('aviso-pdf').style.display='none'" style="background:#f0f0f0;border:none;border-radius:6px;padding:8px 10px;font-size:13px;cursor:pointer;">✕</button>
   </div>
 </div>
@@ -1492,8 +1492,9 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
         pdfPermisoPendiente = { fields: itemActualizado.fields, itemId };
         document.getElementById('aviso-pdf-nombre').textContent = itemActualizado.fields.EmpleadoID || '';
         document.getElementById('aviso-pdf').style.display = 'block';
+        await guardarPDFEnFichaEmpleado(itemActualizado.fields, itemId);
       } catch (errPdf) {
-        toast('Aprobado, pero no se pudieron cargar los datos del PDF: ' + errPdf.message, 'error');
+        toast('Aprobado, pero no se pudo guardar el justificante: ' + errPdf.message, 'error');
       }
     }
     await cargarAusencias();
@@ -1510,12 +1511,13 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
 let pdfPermisoPendiente = null;
 function descargarPDFPendiente() {
   if (!pdfPermisoPendiente) return;
-  generarPDFPermiso(pdfPermisoPendiente.fields, pdfPermisoPendiente.itemId);
+  const { doc, nombreArchivo } = construirPDFPermiso(pdfPermisoPendiente.fields, pdfPermisoPendiente.itemId);
+  doc.save(nombreArchivo);
   document.getElementById('aviso-pdf').style.display = 'none';
   pdfPermisoPendiente = null;
 }
 
-function generarPDFPermiso(f, itemId) {
+function construirPDFPermiso(f, itemId) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -1582,7 +1584,29 @@ function generarPDFPermiso(f, itemId) {
   doc.text(`Generado automáticamente el ${new Date().toLocaleString('es-ES')} · Ref: ${itemId}`, pageW / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
 
   const nombreArchivo = `Justificante_${(f.EmpleadoID || 'empleado').replace(/\s+/g,'_')}_${f.FechaInicio.slice(0,10)}.pdf`;
-  doc.save(nombreArchivo);
+  return { doc, nombreArchivo };
+}
+
+// Sube el justificante ya aprobado a Justificantes/{empleado}/ en SharePoint
+// (mismo patrón que las nóminas) y enlaza la URL resultante en JustificanteURL.
+async function guardarPDFEnFichaEmpleado(f, itemId) {
+  const { doc, nombreArchivo } = construirPDFPermiso(f, itemId);
+  const blob = doc.output('blob');
+  const driveId = await obtenerDriveId();
+  const token = await obtenerToken();
+  const carpeta = 'Justificantes/' + f.EmpleadoID;
+  const r = await fetch(
+    `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${carpeta}/${nombreArchivo}:/content`,
+    { method: 'PUT', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/pdf' }, body: blob }
+  );
+  if (!r.ok) throw new Error('Error al guardar el justificante en la ficha del empleado');
+  const resultado = await r.json();
+  if (resultado.webUrl) {
+    await graphPatch(
+      `/sites/${siteId}/lists/Ausencias/items/${itemId}/fields`,
+      { JustificanteURL: resultado.webUrl }
+    );
+  }
 }
 
 // ════════════════════════════════════════
