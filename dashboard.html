@@ -3244,10 +3244,29 @@ async function exportarCalendarioPDF() {
 
   let maxAusenciasDia = 0;
   Object.keys(mapa).forEach(k => { if (k.startsWith(anyo + '-' + String(mes+1).padStart(2,'0'))) maxAusenciasDia = Math.max(maxAusenciasDia, mapa[k].length); });
-  const alturaFila = Math.max(18, 11 + maxAusenciasDia * 4.2);
+
+  // Espacio disponible para que la tabla (+ leyenda) quepa en una sola página A4 apaisada
+  const startY = 22;
+  const alturaCabeceraTabla = 8;
+  const alturaLeyenda = 14;
+  const margenInferior = 8;
+  const numFilasSemana = body.length;
+  const altoDisponible = pageH - startY - alturaCabeceraTabla - alturaLeyenda - margenInferior;
+  const alturaFilaIdeal = Math.max(18, 11 + maxAusenciasDia * 4.2);
+
+  let alturaFila = alturaFilaIdeal;
+  let escala = 1;
+  if (alturaFilaIdeal * numFilasSemana > altoDisponible) {
+    escala = Math.max(0.45, altoDisponible / (alturaFilaIdeal * numFilasSemana));
+    alturaFila = alturaFilaIdeal * escala;
+  }
+  const fontSizeDia = Math.max(5, 6.5 * escala);
+  const lineHeightAusencia = Math.max(2.4, 3.6 * escala);
 
   doc.autoTable({
-    startY: 22,
+    startY: startY,
+    margin: { bottom: alturaLeyenda + margenInferior },
+    pageBreak: 'avoid',
     head: head,
     body: body,
     theme: 'grid',
@@ -3280,10 +3299,10 @@ async function exportarCalendarioPDF() {
       const ausencias = mapa[key] || [];
       if (!ausencias.length) return;
       const abrevTipo = t => t === 'Vacaciones' ? 'Vac' : t === 'Baja médica' ? 'Baja' : t === 'Baja laboral' ? 'B.Lab' : t === 'Permiso médico' ? 'Perm' : t === 'Compensación de horas' ? 'Comp' : t === 'Asuntos propios' ? 'A.P.' : 'Otro';
-      let ty = data.cell.y + 8;
+      let ty = data.cell.y + Math.max(6, 8 * escala);
       const tx = data.cell.x + 1.5;
       const maxW = data.cell.width - 3;
-      doc.setFontSize(6.5);
+      doc.setFontSize(fontSizeDia);
       doc.setFont('helvetica', 'normal');
       ausencias.forEach(a => {
         const color = colores[a.tipo] || colores['Otros'];
@@ -3291,7 +3310,7 @@ async function exportarCalendarioPDF() {
         doc.setTextColor(...color);
         const partido = doc.splitTextToSize(linea, maxW);
         doc.text(partido[0], tx, ty);
-        ty += 3.6;
+        ty += lineHeightAusencia;
       });
       doc.setTextColor(0, 0, 0);
     }
