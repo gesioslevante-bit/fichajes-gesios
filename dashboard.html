@@ -1471,6 +1471,7 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
     }
   }
   try {
+    const itemOriginal = ausenciasCache.find(a => a.id === itemId);
     const campos = { Estado: nuevoEstado };
     if (horasCompensadas !== null) campos.HorasCompensadas = horasCompensadas;
     await graphPatch(
@@ -1479,6 +1480,9 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
     );
     toast(nuevoEstado === 'APROBADA' ? '✓ Ausencia aprobada' : '✗ Ausencia rechazada',
           nuevoEstado === 'APROBADA' ? 'ok' : 'error');
+    if (nuevoEstado === 'APROBADA' && itemOriginal) {
+      generarPDFPermiso({ ...itemOriginal.fields, ...campos }, itemId);
+    }
     await cargarAusencias();
     // Actualizar badge
     const pend = document.querySelectorAll('#tabla-ausencias [data-pendiente]').length;
@@ -1488,6 +1492,76 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
   } catch(err) {
     toast('Error: ' + err.message, 'error');
   }
+}
+
+function generarPDFPermiso(f, itemId) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+
+  // ── Cabecera ──
+  doc.addImage(LOGO_GESIOS, 'JPEG', 15, 12, 48, 16);
+
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(26, 86, 160);
+  doc.text('GESIOS DEL LEVANTE S.L.', pageW - 15, 17, { align: 'right' });
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(80, 80, 80);
+  doc.text('CIF: B98765432', pageW - 15, 22, { align: 'right' });
+  doc.text('Convenio Estatal de Jardinería 2025-2030', pageW - 15, 27, { align: 'right' });
+
+  doc.setDrawColor(26, 86, 160);
+  doc.setLineWidth(0.5);
+  doc.line(15, 34, pageW - 15, 34);
+
+  // ── Título ──
+  doc.setFontSize(15);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 30, 30);
+  doc.text('Justificante de Ausencia Aprobada', pageW / 2, 46, { align: 'center' });
+
+  // ── Datos ──
+  const dias = diasEntreFechas(f.FechaInicio, f.FechaFin);
+  const filas = [
+    ['Empleado', f.EmpleadoID || '—'],
+    ['Tipo de ausencia', f.TipoAusencia || '—'],
+    ['Fecha de inicio', formatFecha(f.FechaInicio)],
+    ['Fecha de fin', formatFecha(f.FechaFin)],
+    ['Días naturales', String(dias)],
+  ];
+  if (f.HorasCompensadas) filas.push(['Horas compensadas', String(f.HorasCompensadas)]);
+  filas.push(['Motivo / observaciones', f.Motivo || '—']);
+  filas.push(['Estado', 'APROBADA']);
+  filas.push(['Fecha de aprobación', new Date().toLocaleDateString('es-ES')]);
+
+  doc.autoTable({
+    startY: 55,
+    body: filas,
+    theme: 'grid',
+    styles: { fontSize: 10, cellPadding: 4 },
+    columnStyles: {
+      0: { fontStyle: 'bold', fillColor: [240, 244, 250], cellWidth: 55 },
+      1: { cellWidth: 'auto' }
+    },
+  });
+
+  const finalY = doc.lastAutoTable.finalY + 20;
+  doc.setFontSize(9);
+  doc.setTextColor(80, 80, 80);
+  doc.text('Firma del empleado', 30, finalY);
+  doc.text('Firma de RR.HH.', pageW - 60, finalY);
+  doc.line(15, finalY - 8, 80, finalY - 8);
+  doc.line(pageW - 80, finalY - 8, pageW - 15, finalY - 8);
+
+  doc.setFontSize(8);
+  doc.setTextColor(150, 150, 150);
+  doc.text(`Generado automáticamente el ${new Date().toLocaleString('es-ES')} · Ref: ${itemId}`, pageW / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+
+  const nombreArchivo = `Justificante_${(f.EmpleadoID || 'empleado').replace(/\s+/g,'_')}_${f.FechaInicio.slice(0,10)}.pdf`;
+  doc.save(nombreArchivo);
 }
 
 // ════════════════════════════════════════
