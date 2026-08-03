@@ -584,6 +584,17 @@
     flex-direction: column;
     gap: 8px;
   }
+  .historial-mes-header {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gris-medio, #888);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 12px 4px 2px;
+  }
+  .historial-mes-header:first-child {
+    margin-top: 0;
+  }
 
   /* ── LOADING / TOAST ── */
   .overlay-cargando {
@@ -1237,6 +1248,26 @@ async function obtenerFichajesMes() {
   return items;
 }
 
+// Todo el historial del empleado desde que arrancó el sistema (no solo el mes en curso),
+// siguiendo la paginación de Graph para no perder registros antiguos. Usado en la pantalla Historial.
+async function obtenerFichajesTodos() {
+  const siteId = await obtenerSiteId();
+  const token = await obtenerToken();
+  let url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=200` +
+    `&$filter=fields/EmpleadoID eq '${estado.empleado.Title}'` +
+    ` and fields/Timestamp ge '${FECHA_INICIO_SISTEMA.toISOString()}'`;
+  let items = [];
+  while (url) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`Graph API error: ${res.status}`);
+    const data = await res.json();
+    items = items.concat(data.value || []);
+    url = data['@odata.nextLink'] || null;
+  }
+  items.sort((a, b) => new Date(b.fields.Timestamp) - new Date(a.fields.Timestamp));
+  return items;
+}
+
 async function obtenerAusencias() {
   const siteId = await obtenerSiteId();
   const data = await graphCall(
@@ -1773,38 +1804,47 @@ async function enviarAusencia() {
 async function cargarHistorial() {
   const lista = document.getElementById('lista-historial');
   try {
-    const fichajes = await obtenerFichajesMes();
+    const fichajes = await obtenerFichajesTodos();
     if (fichajes.length === 0) {
-      lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--gris-medio);font-size:14px;">Sin registros este mes</div>`;
+      lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--gris-medio);font-size:14px;">Sin registros</div>`;
       return;
     }
 
-    // Agrupar por día
-    const porDia = {};
+    // Agrupar por mes, y dentro por día
+    const porMes = {};
     fichajes.forEach(f => {
       const dia = f.fields.Timestamp.split('T')[0];
-      if (!porDia[dia]) porDia[dia] = [];
-      porDia[dia].push(f.fields);
+      const mes = dia.slice(0, 7);
+      if (!porMes[mes]) porMes[mes] = {};
+      if (!porMes[mes][dia]) porMes[mes][dia] = [];
+      porMes[mes][dia].push(f.fields);
     });
 
-    lista.innerHTML = Object.entries(porDia)
-      .sort((a,b) => b[0].localeCompare(a[0]))
-      .map(([dia, fs]) => {
-        const fecha = new Date(dia).toLocaleDateString('es-ES', {weekday:'short', day:'numeric', month:'short'});
-        const items = fs.map(f => {
-          const hora = new Date(f.Timestamp).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
-          return `<div class="fichaje-item">
-            <div class="fichaje-dot ${f.TipoFichaje === 'ENTRADA' ? 'dot-entrada' : 'dot-salida'}"></div>
-            <div class="fichaje-info">
-              <div class="fichaje-tipo">${f.TipoFichaje === 'ENTRADA' ? 'Entrada' : 'Salida'}</div>
-              <div class="fichaje-hora">${hora}</div>
-            </div>
-          </div>`;
-        }).join('');
-        return `<div class="card" style="margin-bottom:8px;">
-          <div style="font-size:13px;font-weight:700;color:var(--verde);margin-bottom:10px;text-transform:capitalize;">${fecha}</div>
-          ${items}
-        </div>`;
+    lista.innerHTML = Object.keys(porMes)
+      .sort().reverse()
+      .map(mes => {
+        const [y, m] = mes.split('-').map(Number);
+        const nombreMes = new Date(y, m-1, 1).toLocaleDateString('es-ES', {month:'long', year:'numeric'});
+        const diasHtml = Object.entries(porMes[mes])
+          .sort((a,b) => b[0].localeCompare(a[0]))
+          .map(([dia, fs]) => {
+            const fecha = new Date(dia).toLocaleDateString('es-ES', {weekday:'short', day:'numeric', month:'short'});
+            const items = fs.map(f => {
+              const hora = new Date(f.Timestamp).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
+              return `<div class="fichaje-item">
+                <div class="fichaje-dot ${f.TipoFichaje === 'ENTRADA' ? 'dot-entrada' : 'dot-salida'}"></div>
+                <div class="fichaje-info">
+                  <div class="fichaje-tipo">${f.TipoFichaje === 'ENTRADA' ? 'Entrada' : 'Salida'}</div>
+                  <div class="fichaje-hora">${hora}</div>
+                </div>
+              </div>`;
+            }).join('');
+            return `<div class="card" style="margin-bottom:8px;">
+              <div style="font-size:13px;font-weight:700;color:var(--verde);margin-bottom:10px;text-transform:capitalize;">${fecha}</div>
+              ${items}
+            </div>`;
+          }).join('');
+        return `<div class="historial-mes-header">${nombreMes.charAt(0).toUpperCase() + nombreMes.slice(1)}</div>${diasHtml}`;
       }).join('');
   } catch(e) {
     lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--rojo);font-size:14px;">Error cargando historial</div>`;
