@@ -1875,6 +1875,7 @@ function generarCSVFichajes(items, empleadosCache, ausencias, desde, hasta, empF
   Object.keys(ausenciaPorDiaEmp).forEach(k => diasConActividad.add(k.split('_').slice(-1)[0]));
 
   let csv = 'Empleado;Fecha;Estado;Entrada;Salida;Horas_Trabajadas;Horas_Extras\n';
+  const totalesPorEmp = {}; // { emp: { horas, extras } }
 
   Array.from(diasConActividad).sort().forEach(dia => {
     const fechaFmt = new Date(dia + 'T12:00:00Z').toLocaleDateString('es-ES', {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
@@ -1895,8 +1896,12 @@ function generarCSVFichajes(items, empleadosCache, ausencias, desde, hasta, empF
         const diffH = diffMs / 3600000;
         const jornadaH = jornadaMap[j.emp] || 8;
         const umbral = jornadaH + 0.25;
-        horasTrabajadas = formatoHoras(diffH);
-        horasExtras = diffH > umbral ? formatoHoras(diffH - jornadaH) : '0:00';
+        const extraH = diffH > umbral ? diffH - jornadaH : 0;
+        horasTrabajadas = '="' + formatoHoras(diffH) + '"';
+        horasExtras = extraH > 0 ? '="' + formatoHoras(extraH) + '"' : '="0:00"';
+        if (!totalesPorEmp[j.emp]) totalesPorEmp[j.emp] = { horas: 0, extras: 0 };
+        totalesPorEmp[j.emp].horas += diffH;
+        totalesPorEmp[j.emp].extras += extraH;
       }
       csv += `${j.emp};${fechaCorta(dia)};Trabajó;${entrada};${salida};${horasTrabajadas};${horasExtras}\n`;
     });
@@ -1910,14 +1915,27 @@ function generarCSVFichajes(items, empleadosCache, ausencias, desde, hasta, empF
     });
   });
 
+  // Total de horas trabajadas y extra por empleado en el período
+  if (Object.keys(totalesPorEmp).length > 0) {
+    csv += '\n;; TOTAL DE HORAS POR EMPLEADO;;;\n';
+    csv += 'Empleado;;;;;Horas_Trabajadas;Horas_Extras\n';
+    Object.keys(totalesPorEmp).sort().forEach(emp => {
+      const t = totalesPorEmp[emp];
+      csv += `${emp};;;;;="${formatoHoras(t.horas)}";="${formatoHoras(t.extras)}"\n`;
+    });
+    const totalHorasGen = Object.values(totalesPorEmp).reduce((a,b) => a+b.horas, 0);
+    const totalExtrasGen = Object.values(totalesPorEmp).reduce((a,b) => a+b.extras, 0);
+    csv += `;;;;TOTAL GENERAL;="${formatoHoras(totalHorasGen)}";="${formatoHoras(totalExtrasGen)}"\n`;
+  }
+
   // Añadir resumen de compensaciones si hay
   if (Object.keys(compMap).length > 0) {
     csv += '\n;; COMPENSACIONES APROBADAS EN EL PERÍODO;;;\n';
     Object.entries(compMap).forEach(([emp, h]) => {
-      csv += `${emp};;;Compensación aprobada;-${formatoHoras(h)};\n`;
+      csv += `${emp};;;Compensación aprobada;="-${formatoHoras(h)}";\n`;
     });
     const totalComp = Object.values(compMap).reduce((a,b) => a+b, 0);
-    csv += `;;Total compensado;;;-${formatoHoras(totalComp)};\n`;
+    csv += `;;Total compensado;;;="-${formatoHoras(totalComp)}";\n`;
   }
   return csv;
 }
