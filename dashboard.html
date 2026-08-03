@@ -332,6 +332,7 @@ tbody tr:hover { background: var(--gris-fondo); }
 .alerta-extras { background: var(--rojo-claro); border: 1px solid var(--rojo); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--rojo); font-weight: 600; margin-top: 10px; }
 .vac-detalle { margin-top: 10px; font-size: 12.5px; color: #555; }
 .vac-detalle summary { cursor: pointer; color: var(--azul, #2563eb); font-weight: 600; }
+.fila-mes-historial td { background: var(--gris-claro, #f0f4fa); color: var(--azul, #1a56a0); font-weight: 700; font-size: 13px; padding: 10px 14px; position: sticky; top: 0; }
 .vac-detalle ul { margin: 6px 0 0; padding-left: 18px; }
 .vac-detalle li { margin-bottom: 3px; }
 .ok-extras { background: var(--verde-claro); border: 1px solid var(--verde); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--verde); font-weight: 600; margin-top: 10px; }
@@ -1147,6 +1148,27 @@ async function graphCall(endpoint) {
   return r.json();
 }
 
+// Igual que graphCall, pero sigue @odata.nextLink hasta traer TODOS los resultados,
+// para que listas largas (p.ej. el historial completo de fichajes) no se corten en el primer $top.
+async function graphCallTodo(endpoint) {
+  await obtenerToken();
+  const headers = { Authorization: 'Bearer ' + accessToken };
+  if (endpoint.includes('Ausencias')) headers['Prefer'] = 'HonorNonIndexedQueriesWarningMayFailRandomly';
+  let url = 'https://graph.microsoft.com/v1.0' + endpoint;
+  let valores = [];
+  while (url) {
+    const r = await fetch(url, { headers });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error?.message || r.statusText);
+    }
+    const data = await r.json();
+    valores = valores.concat(data.value || []);
+    url = data['@odata.nextLink'] || null;
+  }
+  return { value: valores };
+}
+
 async function graphPatch(endpoint, body) {
   await obtenerToken();
   const r = await fetch('https://graph.microsoft.com/v1.0' + endpoint, {
@@ -1359,12 +1381,12 @@ async function cargarHistorial() {
   if (empFiltro) filtro += ` and fields/EmpleadoID eq '${empFiltro}'`;
 
   try {
-    const data = await graphCall(
-      `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=500&$filter=${filtro}`
+    const data = await graphCallTodo(
+      `/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=200&$filter=${filtro}`
     );
     const items = (data.value || []).sort((a,b) => b.fields.Timestamp.localeCompare(a.fields.Timestamp));
     document.getElementById('historial-titulo').textContent = `Fichajes (${items.length})`;
-    renderTablaFichajes('tabla-historial', items, 5);
+    renderTablaFichajesPorMes('tabla-historial', items);
   } catch(err) {
     tbody.innerHTML = `<tr><td colspan="5" class="vacio">Error: ${err.message}</td></tr>`;
   }
@@ -1804,6 +1826,45 @@ function renderTablaFichajes(tbodyId, items, cols) {
     </tr>`;
   }).join('');
 }
+
+function renderTablaFichajesPorMes(tbodyId, items) {
+  const tbody = document.getElementById(tbodyId);
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="vacio"><div class="ico">📋</div>Sin registros</td></tr>`;
+    return;
+  }
+  const grupos = {}; // 'YYYY-MM' -> items[]
+  items.forEach(item => {
+    const clave = item.fields.Timestamp.slice(0, 7);
+    if (!grupos[clave]) grupos[clave] = [];
+    grupos[clave].push(item);
+  });
+  const meses = Object.keys(grupos).sort().reverse();
+  tbody.innerHTML = meses.map(clave => {
+    const [y, m] = clave.split('-').map(Number);
+    const nombreMes = new Date(y, m-1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    const cabecera = `<tr class="fila-mes-historial"><td colspan="5">${nombreMes.charAt(0).toUpperCase() + nombreMes.slice(1)} (${grupos[clave].length})</td></tr>`;
+    const filas = grupos[clave].map(item => {
+      const f = item.fields;
+      const fecha = new Date(f.Timestamp);
+      const tipo = f.TipoFichaje === 'ENTRADA'
+        ? '<span class="badge badge-verde"><span class="dot"></span>ENTRADA</span>'
+        : '<span class="badge badge-rojo"><span class="dot"></span>SALIDA</span>';
+      const gps = (f.Latitud && f.Longitud)
+        ? `<a href="https://maps.google.com/?q=${f.Latitud},${f.Longitud}" target="_blank" style="color:var(--azul);font-size:12px">📍 Ver mapa</a>`
+        : '<span style="color:var(--gris-texto);font-size:12px">Sin GPS</span>';
+      return `<tr>
+        <td><strong>${f.EmpleadoID || '—'}</strong></td>
+        <td>${tipo}</td>
+        <td>${fecha.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'})}</td>
+        <td>${fecha.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</td>
+        <td>${gps}</td>
+      </tr>`;
+    }).join('');
+    return cabecera + filas;
+  }).join('');
+}
+
 
 function calcularHorasMes(fichajes) {
   const porEmp = {};
