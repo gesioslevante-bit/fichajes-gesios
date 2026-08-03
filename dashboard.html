@@ -1946,9 +1946,9 @@ function fechaCorta(diaISO) {
 
 function formatoHoras(horasDecimal) {
   const signo = horasDecimal < 0 ? '-' : '';
-  const abs = Math.abs(horasDecimal);
-  const h = Math.floor(abs);
-  const m = Math.round((abs - h) * 60);
+  const totalMin = Math.round(Math.abs(horasDecimal) * 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
   return `${signo}${h}:${String(m).padStart(2,'0')}`;
 }
 
@@ -2481,6 +2481,7 @@ async function exportarPDF() {
     const empleadosParaFiltro = empFiltro ? [empFiltro] : Object.keys(empMap);
 
     let rows = [];
+    const totalesPorEmp = {};
     Array.from(diasConActividad).sort().forEach(dia => {
       // Empleados que trabajaron ese día
       const trabajaronHoy = new Set();
@@ -2495,9 +2496,13 @@ async function exportarPDF() {
         if (j.entradas[0] && j.salidas.length) {
           const diffMs = new Date(j.salidas[j.salidas.length-1]) - new Date(j.entradas[0]);
           const diffH = diffMs / 3600000;
-          horas = formatoHoras(diffH);
           const umbral = jornadaH + 0.25;
-          extras = diffH > umbral ? formatoHoras(diffH - jornadaH) : '0:00';
+          const extraH = diffH > umbral ? diffH - jornadaH : 0;
+          horas = formatoHoras(diffH);
+          extras = formatoHoras(extraH);
+          if (!totalesPorEmp[j.emp]) totalesPorEmp[j.emp] = { horas: 0, extras: 0 };
+          totalesPorEmp[j.emp].horas += diffH;
+          totalesPorEmp[j.emp].extras += extraH;
         }
         rows.push([j.emp, nif, dia, entrada, salida, horas, extras]);
       });
@@ -2507,7 +2512,7 @@ async function exportarPDF() {
         if (tipo && !trabajaronHoy.has(emp)) {
           const empDatos = empMap[emp] || {};
           const nif = empDatos.NIF || '—';
-          rows.push([emp, nif, dia, '—', '—', 'AUSENCIA: ' + tipo, '—']);
+          rows.push([emp, nif, dia, { __ausencia: true, tipo }]);
         }
       });
     });
@@ -2518,16 +2523,7 @@ async function exportarPDF() {
       return a[0].localeCompare(b[0]);
     });
 
-    // Calcular totales por empleado (solo cuenta horas trabajadas, no ausencias)
-    const totalesPorEmp = {};
-    rows.forEach(r => {
-      const emp = r[0];
-      if (!totalesPorEmp[emp]) totalesPorEmp[emp] = { horas: 0, extras: 0 };
-      if (!r[5].startsWith('AUSENCIA')) {
-        totalesPorEmp[emp].horas  += parseFloat(r[5]) || 0;
-        totalesPorEmp[emp].extras += parseFloat(r[6]) || 0;
-      }
-    });
+    // Calcular totales por empleado (solo cuenta horas trabajadas, no ausencias) — ya acumulado arriba
 
     // Agrupar visualmente por fecha (cabecera azul oscuro) — dentro, cada empleado es una fila
     const rowsConGrupos = [];
@@ -2538,9 +2534,11 @@ async function exportarPDF() {
         rowsConGrupos.push([{ content: fechaRow, colSpan: 7, styles: { fillColor: [26, 86, 160], fontStyle: 'bold', textColor: 255, fontSize: 9 } }]);
         fechaActualPDF = r[2];
       }
-      const esAusencia = r[5].startsWith('AUSENCIA');
-      if (esAusencia) {
-        rowsConGrupos.push(r.map((c, i) => i === 5 ? { content: c, styles: { textColor: [180, 60, 30], fontStyle: 'bold' } } : c));
+      if (r[3] && r[3].__ausencia) {
+        rowsConGrupos.push([
+          r[0], r[1], r[2],
+          { content: 'Ausencia: ' + r[3].tipo, colSpan: 4, styles: { textColor: [180, 60, 30], fontStyle: 'bold', halign: 'left' } }
+        ]);
       } else {
         rowsConGrupos.push(r);
       }
@@ -2555,57 +2553,75 @@ async function exportarPDF() {
       headStyles: { fillColor: [26, 86, 160], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [245, 248, 255] },
       columnStyles: {
-        0: { cellWidth: 48 },
-        1: { cellWidth: 26 },
-        2: { cellWidth: 24 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 18 },
-        6: { cellWidth: 18 }
+        0: { cellWidth: 68 },
+        1: { cellWidth: 28 },
+        2: { cellWidth: 28 },
+        3: { cellWidth: 26 },
+        4: { cellWidth: 26 },
+        5: { cellWidth: 26 },
+        6: { cellWidth: 26 }
       },
       margin: { left: 12, right: 12 },
       didDrawPage: function(data) {
         doc.setFontSize(8);
         doc.setTextColor(150, 150, 150);
         doc.text(`RDL 8/2019 — Registro de Jornada`, 12, pageH - 8);
-        doc.text(`Página ${data.pageNumber}`, pageW - 12, pageH - 8, { align: 'right' });
+        doc.text(`Página ${doc.internal.getNumberOfPages()}`, pageW - 12, pageH - 8, { align: 'right' });
       }
     });
 
     // Resumen por empleado + total general
 
-    const totalHoras   = rows.reduce((acc, r) => acc + (parseFloat(r[5]) || 0), 0);
-    const totalExtrasB = rows.reduce((acc, r) => acc + (parseFloat(r[6]) || 0), 0);
+    const totalHoras   = Object.values(totalesPorEmp).reduce((acc, t) => acc + t.horas, 0);
+    const totalExtrasB = Object.values(totalesPorEmp).reduce((acc, t) => acc + t.extras, 0);
     const totalCompensadas = Object.values(compMap).reduce((a, b) => a + b, 0);
     const extrasNetas = Math.max(0, totalExtrasB - totalCompensadas);
 
-    let finalY = doc.lastAutoTable.finalY + 8;
-    doc.setFontSize(9);
+    // ── Resumen por empleado: tabla propia en página nueva ──
+    doc.addPage();
+    doc.setFontSize(13);
     doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.text('Resumen del período por empleado', 12, 18);
 
-    // Resumen por empleado
-    Object.entries(totalesPorEmp).forEach(([emp, t]) => {
-      const comp = compMap[emp] || 0;
-      const netas = Math.max(0, t.extras - comp);
-      doc.setTextColor(26, 86, 160);
-      let linea = `${emp}  —  Horas: ${formatoHoras(t.horas)}  |  Extras: ${formatoHoras(t.extras)}`;
-      if (comp > 0) linea += `  |  Comp: ${formatoHoras(comp)}  |  Netas: ${formatoHoras(netas)}`;
-      doc.text(linea, pageW - 12, finalY, { align: 'right' });
-      finalY += 6;
+    const resumenBody = Object.entries(totalesPorEmp)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([emp, t]) => {
+        const comp = compMap[emp] || 0;
+        const netas = Math.max(0, t.extras - comp);
+        return [emp, formatoHoras(t.horas), formatoHoras(t.extras), formatoHoras(comp), formatoHoras(netas)];
+      });
+    resumenBody.push([
+      { content: 'TOTAL GENERAL', styles: { fontStyle: 'bold', fillColor: [235, 240, 250] } },
+      { content: formatoHoras(totalHoras), styles: { fontStyle: 'bold', fillColor: [235, 240, 250] } },
+      { content: formatoHoras(totalExtrasB), styles: { fontStyle: 'bold', fillColor: [235, 240, 250] } },
+      { content: formatoHoras(totalCompensadas), styles: { fontStyle: 'bold', fillColor: [235, 240, 250] } },
+      { content: formatoHoras(extrasNetas), styles: { fontStyle: 'bold', fillColor: [235, 240, 250] } }
+    ]);
+
+    doc.autoTable({
+      startY: 26,
+      head: [['Empleado', 'Horas trabajadas', 'Extras brutas', 'Compensadas', 'Extras netas']],
+      body: resumenBody,
+      theme: 'grid',
+      styles: { fontSize: 9.5, cellPadding: 3 },
+      headStyles: { fillColor: [26, 86, 160], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 248, 255] },
+      columnStyles: {
+        0: { cellWidth: 80 },
+        1: { cellWidth: 40, halign: 'right' },
+        2: { cellWidth: 40, halign: 'right' },
+        3: { cellWidth: 40, halign: 'right' },
+        4: { cellWidth: 40, halign: 'right' }
+      },
+      margin: { left: 12, right: 12 },
+      didDrawPage: function(data) {
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`RDL 8/2019 — Registro de Jornada`, 12, pageH - 8);
+        doc.text(`Página ${doc.internal.getNumberOfPages()}`, pageW - 12, pageH - 8, { align: 'right' });
+      }
     });
-
-    // Línea separadora
-    doc.setDrawColor(26, 86, 160);
-    doc.setLineWidth(0.3);
-    doc.line(pageW * 0.4, finalY - 2, pageW - 12, finalY - 2);
-    finalY += 2;
-
-    // Total general
-    doc.setFontSize(10);
-    doc.setTextColor(26, 86, 160);
-    let resumenTexto = `TOTAL  —  Horas: ${formatoHoras(totalHoras)}  |  Extras brutas: ${formatoHoras(totalExtrasB)}`;
-    if (totalCompensadas > 0) resumenTexto += `  |  Compensadas: ${formatoHoras(totalCompensadas)}  |  Extras netas: ${formatoHoras(extrasNetas)}`;
-    doc.text(resumenTexto, pageW - 12, finalY, { align: 'right' });
 
     doc.save(`InformeJornada_${desde}_${hasta}.pdf`);
     toast('✓ Informe PDF generado', 'ok');
