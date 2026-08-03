@@ -2162,7 +2162,7 @@ async function cargarControlHoras() {
             </div>
             <div class="horas-stat">
               <div class="horas-stat-val ${colorExtra}">${horasExtraNetas.toFixed(1)}h</div>
-              <div class="horas-stat-label">Extras netas año</div>
+              <div class="horas-stat-label">Extras netas año${horasComp > 0 ? ` <small style="color:#888;font-weight:400;">(${horasExtraAnyo.toFixed(1)}h brutas − ${horasComp.toFixed(1)}h comp.)</small>` : ''}</div>
             </div>
             <div class="horas-stat">
               <div class="horas-stat-val">${horasComp.toFixed(1)}h</div>
