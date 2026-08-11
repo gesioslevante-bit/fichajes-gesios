@@ -593,8 +593,8 @@ tbody tr:hover { background: var(--gris-fondo); }
         </div>
         <div class="tabla-wrap">
           <table>
-            <thead><tr><th>Nombre</th><th>Cargo</th><th>NIF</th><th>Jornada</th><th>PIN</th><th>Email</th></tr></thead>
-            <tbody id="tabla-empleados"><tr><td colspan="5" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
+            <thead><tr><th>Nombre</th><th>Cargo</th><th>NIF</th><th>Jornada</th><th>PIN</th><th>Email</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody id="tabla-empleados"><tr><td colspan="8" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1170,28 +1170,61 @@ async function cargarSiteId() {
 // ════════════════════════════════════════
 async function cargarEmpleados() {
   const tbody = document.getElementById('tabla-empleados');
-  tbody.innerHTML = '<tr><td colspan="5" class="cargando"><span class="spinner"></span> Cargando...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" class="cargando"><span class="spinner"></span> Cargando...</td></tr>';
   try {
     const data = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
     empleadosCache = data.value || [];
     empleadosCache.sort((a,b) => (a.fields.Title||'').localeCompare(b.fields.Title||''));
     if (!empleadosCache.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="vacio"><div class="ico">👥</div>No hay empleados</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="vacio"><div class="ico">👥</div>No hay empleados</td></tr>';
       return;
     }
     tbody.innerHTML = empleadosCache.map(e => {
       const f = e.fields;
-      return `<tr>
+      const activo = f.Activo !== false; // columna Sí/No; por defecto activo si no está definido
+      const badge = activo
+        ? '<span class="badge badge-verde">Activo</span>'
+        : '<span class="badge badge-rojo">De baja</span>';
+      const accion = activo
+        ? `<button class="btn btn-rojo" onclick="bajaEmpleado('${e.id}','${(f.Title||'').replace(/'/g,"\\'")}')" title="Dar de baja">🚫 Dar de baja</button>`
+        : `<button class="btn btn-verde" onclick="reactivarEmpleado('${e.id}','${(f.Title||'').replace(/'/g,"\\'")}')" title="Reactivar">↺ Reactivar</button>`;
+      return `<tr${activo ? '' : ' style="opacity:.55"'}>
         <td><strong>${f.Title || '—'}</strong></td>
         <td>${f.Cargo || '—'}</td>
         <td>${f.NIF || '—'}</td>
         <td>${f.HorasJornada ? f.HorasJornada + 'h' : '—'}</td>
         <td><code>${f.PIN || '—'}</code></td>
         <td>${f.Email || '—'}</td>
+        <td>${badge}</td>
+        <td>${accion}</td>
       </tr>`;
     }).join('');
   } catch(err) {
-    tbody.innerHTML = `<tr><td colspan="5" class="vacio">Error: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="vacio">Error: ${err.message}</td></tr>`;
+  }
+}
+
+async function bajaEmpleado(itemId, nombre) {
+  if (!confirm(`¿Dar de baja a ${nombre}?\n\nDejará de aparecer en los selectores de fichajes y ausencias, pero se conservará todo su historial.`)) return;
+  try {
+    await graphPatch(`/sites/${siteId}/lists/Empleados/items/${itemId}/fields`, { Activo: false });
+    toast(`✓ ${nombre} dado de baja`, 'ok');
+    await cargarEmpleados();
+    await cargarEmpleadosEnSelectores();
+  } catch(err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+async function reactivarEmpleado(itemId, nombre) {
+  if (!confirm(`¿Reactivar a ${nombre}?`)) return;
+  try {
+    await graphPatch(`/sites/${siteId}/lists/Empleados/items/${itemId}/fields`, { Activo: true });
+    toast(`✓ ${nombre} reactivado`, 'ok');
+    await cargarEmpleados();
+    await cargarEmpleadosEnSelectores();
+  } catch(err) {
+    toast('Error: ' + err.message, 'error');
   }
 }
 
@@ -1200,7 +1233,8 @@ async function cargarEmpleadosEnSelectores() {
     const data = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
     empleadosCache = data.value || [];
     empleadosCache.sort((a,b) => (a.fields.Title||'').localeCompare(b.fields.Title||''));
-    const opts = empleadosCache.map(e => `<option value="${e.fields.Title}">${e.fields.Title}</option>`).join('');
+    // Solo empleados activos en los selectores (los dados de baja no deben poder ficharse/solicitar ausencias)
+    const opts = empleadosCache.filter(e => e.fields.Activo !== false).map(e => `<option value="${e.fields.Title}">${e.fields.Title}</option>`).join('');
     ['filtro-empleado','filtro-ausencia-empleado','exp-empleado-mes','itss-empleado','baja-empleado','nomina-empleado','fadmin-empleado'].forEach(id => {
       const sel = document.getElementById(id);
       if (sel) sel.innerHTML = '<option value="">Todos</option>' + opts;
