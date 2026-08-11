@@ -586,6 +586,13 @@ tbody tr:hover { background: var(--gris-fondo); }
         <h2>Empleados</h2>
         <p>Listado de empleados registrados en el sistema</p>
       </div>
+      <div class="filtros">
+        <select id="filtro-empleado-estado" onchange="cargarEmpleados()">
+          <option value="todos">Todos</option>
+          <option value="activos" selected>Solo activos</option>
+          <option value="baja">Solo de baja</option>
+        </select>
+      </div>
       <div class="card">
         <div class="card-header">
           <h3>Lista de empleados</h3>
@@ -1179,7 +1186,18 @@ async function cargarEmpleados() {
       tbody.innerHTML = '<tr><td colspan="8" class="vacio"><div class="ico">👥</div>No hay empleados</td></tr>';
       return;
     }
-    tbody.innerHTML = empleadosCache.map(e => {
+    const filtro = document.getElementById('filtro-empleado-estado')?.value || 'activos';
+    const lista = empleadosCache.filter(e => {
+      const activo = e.fields.Activo !== false;
+      if (filtro === 'activos') return activo;
+      if (filtro === 'baja') return !activo;
+      return true; // todos
+    });
+    if (!lista.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="vacio"><div class="ico">👥</div>No hay empleados que coincidan con el filtro</td></tr>';
+      return;
+    }
+    tbody.innerHTML = lista.map(e => {
       const f = e.fields;
       const activo = f.Activo !== false; // columna Sí/No; por defecto activo si no está definido
       const badge = activo
