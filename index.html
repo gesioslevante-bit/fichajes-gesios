@@ -191,6 +191,9 @@
     cursor: pointer;
     transition: all 0.2s;
     letter-spacing: 0.3px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
   }
   .btn:active { transform: scale(0.97); }
   .btn-principal {
@@ -1348,19 +1351,19 @@ function iniciarGPS() {
 
 // Comprueba la ubicación justo antes de fichar (más fiable que confiar solo
 // en el watchPosition de fondo, que puede no haber dado ningún resultado aún).
+// Primero intenta alta precisión (más exacto, puede tardar más en interiores).
+// Si no consigue una posición a tiempo, hace un segundo intento más rápido
+// con precisión estándar en vez de dejar a la persona esperando o fallar el
+// fichaje directamente.
 function obtenerGPSObligatorio() {
-  return new Promise((resolve, reject) => {
+  const intentar = (opciones) => new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       reject({ tipo: 'no-soportado' });
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      pos => {
-        estado.gps = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        resolve(estado.gps);
-      },
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       err => {
-        estado.gps = null;
         if (err.code === err.PERMISSION_DENIED) {
           reject({ tipo: 'denegado' });
         } else if (err.code === err.TIMEOUT) {
@@ -1369,9 +1372,25 @@ function obtenerGPSObligatorio() {
           reject({ tipo: 'error' });
         }
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      opciones
     );
   });
+
+  return intentar({ enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 })
+    .then(gps => { estado.gps = gps; return gps; })
+    .catch(err => {
+      // Si el permiso está denegado o el dispositivo no soporta geolocalización,
+      // un segundo intento no va a ayudar: se propaga el error tal cual.
+      if (err.tipo === 'denegado' || err.tipo === 'no-soportado') {
+        estado.gps = null;
+        throw err;
+      }
+      // Alta precisión tardó demasiado: probamos un segundo intento más
+      // rápido con precisión estándar antes de rendirnos.
+      return intentar({ enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 })
+        .then(gps => { estado.gps = gps; return gps; })
+        .catch(err2 => { estado.gps = null; throw err2; });
+    });
 }
 
 function mensajeErrorGPS(motivo) {
@@ -1408,7 +1427,7 @@ function pulsarTecla(num) {
   estado.pin += num;
   actualizarDotsPIN();
   if (estado.pin.length === 4) {
-    setTimeout(verificarPIN, 200);
+    verificarPIN();
   }
 }
 
