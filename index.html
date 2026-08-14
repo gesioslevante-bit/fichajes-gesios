@@ -476,6 +476,7 @@
   .ausencia-card.pendiente { border-left-color: var(--amarillo); }
   .ausencia-card.aprobada { border-left-color: var(--verde-claro); }
   .ausencia-card.rechazada { border-left-color: var(--rojo); }
+  .ausencia-card.justificante_pendiente { border-left-color: #F97316; }
 
   .ausencia-header {
     display: flex;
@@ -499,6 +500,40 @@
   .badge-pendiente { background: #FFF3CD; color: #856404; }
   .badge-aprobada { background: #DBEAFE; color: #1E40AF; }
   .badge-rechazada { background: #FEE2E2; color: #991B1B; }
+  .badge-justificante_pendiente { background: #FFEDD5; color: #9A3412; }
+
+  .aviso-justificante {
+    background: #FFF7ED;
+    border: 1.5px solid #FDBA74;
+    border-radius: var(--radio);
+    padding: 12px 14px;
+    margin: 0 16px 12px;
+    font-size: 13px;
+    color: #9A3412;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+  }
+
+  .menu-item { position: relative; }
+  .menu-badge {
+    position: absolute;
+    top: 2px;
+    right: 18px;
+    background: var(--rojo, #EF4444);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+  }
 
   .ausencia-fechas {
     font-size: 13px;
@@ -816,6 +851,11 @@
   </div>
 
   <div class="contenido-principal">
+    <div class="aviso-justificante" id="aviso-justificante" style="display:none" onclick="navegar('ausencias')">
+      <span id="aviso-justificante-texto">⚠️ Falta subir un justificante</span>
+      <span>›</span>
+    </div>
+
     <div class="seccion-titulo">Registro de jornada</div>
     <div class="acciones-fichaje">
       <button class="btn btn-entrada" id="btn-entrada" onclick="confirmarFichaje('ENTRADA')">
@@ -864,6 +904,7 @@
     <button class="menu-item" onclick="navegar('ausencias')">
       <span class="icono-menu">📋</span>
       <span class="label-menu">Ausencias</span>
+      <span class="menu-badge" id="badge-justificantes"></span>
     </button>
     <button class="menu-item" onclick="navegar('historial')">
       <span class="icono-menu">📊</span>
@@ -1484,6 +1525,32 @@ async function entrarPantallaPrincipal() {
   setInterval(actualizarReloj, 1000);
 
   await cargarDashboard();
+  comprobarJustificantesPendientes();
+}
+
+// ── AVISO DE JUSTIFICANTES PENDIENTES (al abrir la app) ─────
+async function comprobarJustificantesPendientes() {
+  try {
+    const ausencias = await obtenerAusencias();
+    const pendientes = ausencias.filter(a => (a.fields.Estado || '').toUpperCase() === 'JUSTIFICANTE_PENDIENTE');
+    const badge = document.getElementById('badge-justificantes');
+    const aviso = document.getElementById('aviso-justificante');
+    const avisoTexto = document.getElementById('aviso-justificante-texto');
+    if (pendientes.length > 0) {
+      badge.textContent = pendientes.length;
+      badge.style.display = 'flex';
+      avisoTexto.textContent = pendientes.length === 1
+        ? '⚠️ Falta subir un justificante'
+        : `⚠️ Faltan ${pendientes.length} justificantes por subir`;
+      aviso.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+      aviso.style.display = 'none';
+    }
+  } catch(e) {
+    // Silencioso: no bloquear la pantalla principal si esto falla
+    console.error('Error comprobando justificantes pendientes', e);
+  }
 }
 
 async function cargarDashboard() {
@@ -1673,17 +1740,21 @@ async function cargarAusencias() {
       const f = a.fields;
       const fi = new Date(f.FechaInicio).toLocaleDateString('es-ES');
       const ff = new Date(f.FechaFin).toLocaleDateString('es-ES');
-      const estado = (f.Estado || 'Pendiente').toLowerCase();
       const estadoUp = (f.Estado || 'PENDIENTE').toUpperCase();
+      const estado = estadoUp === 'JUSTIFICANTE_PENDIENTE' ? 'justificante_pendiente' : estadoUp.toLowerCase();
       const esPendiente = estadoUp === 'PENDIENTE' || estadoUp === 'APROBADA';
+      const faltaJustificante = estadoUp === 'JUSTIFICANTE_PENDIENTE';
+      const textoBadge = faltaJustificante ? '🔔 Falta justificante' : (f.Estado || 'Pendiente');
       return `<div class="ausencia-card ${estado}">
         <div class="ausencia-header">
           <div class="ausencia-tipo">${f.TipoAusencia}</div>
-          <div class="ausencia-badge badge-${estado}">${f.Estado || 'Pendiente'}</div>
+          <div class="ausencia-badge badge-${estado}">${textoBadge}</div>
         </div>
         <div class="ausencia-fechas">${fi} — ${ff} · ${f.Dias || 1} día${f.Dias !== 1 ? 's' : ''}</div>
         ${f.Motivo ? `<div style="font-size:13px;color:var(--gris-medio);margin-top:6px;">${f.Motivo}</div>` : ''}
         ${f.AdminComentario ? `<div style="font-size:13px;color:var(--verde);margin-top:6px;font-style:italic;">"${f.AdminComentario}"</div>` : ''}
+        ${faltaJustificante ? `<div style="font-size:12px;color:#9A3412;margin-top:6px;">Ya puedes acudir a la cita — sube el justificante en cuanto lo tengas.</div>
+        <button style="width:100%;background:#F97316;color:#fff;border:none;padding:9px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-top:10px;" onclick="subirJustificantePendiente('${a.id}')">📎 Subir justificante</button>` : ''}
         ${esPendiente ? `<div style="display:flex;gap:8px;margin-top:10px;">
           <button style="flex:1;background:var(--azul);color:#fff;border:none;padding:7px;border-radius:8px;font-size:13px;cursor:pointer;" onclick="editarAusencia('${a.id}','${f.TipoAusencia}','${f.FechaInicio.slice(0,10)}','${f.FechaFin.slice(0,10)}',encodeURIComponent('${(f.Motivo||'')}'))">✏️ Modificar</button>
           <button style="flex:1;background:#fff;color:var(--rojo);border:1.5px solid var(--rojo);padding:7px;border-radius:8px;font-size:13px;cursor:pointer;" onclick="cancelarAusencia('${a.id}')">🗑️ Cancelar</button>
@@ -1693,6 +1764,31 @@ async function cargarAusencias() {
   } catch(e) {
     lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--rojo);font-size:14px;">Error cargando ausencias</div>`;
   }
+}
+
+// Sube el justificante real de una ausencia ya concedida (estado "falta justificante")
+// y la pasa automáticamente a APROBADA.
+function subirJustificantePendiente(id) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.jpeg,.png,.heic';
+  input.onchange = async () => {
+    const archivo = input.files[0];
+    if (!archivo) return;
+    mostrarCargando('Subiendo justificante...');
+    try {
+      const url = await subirJustificante(archivo);
+      await actualizarAusencia(id, { JustificanteURL: url, Estado: 'APROBADA' });
+      ocultarCargando();
+      toast('✓ Justificante subido', 'ok');
+      await cargarAusencias();
+      await comprobarJustificantesPendientes();
+    } catch(e) {
+      ocultarCargando();
+      toast('Error al subir: ' + e.message, 'error');
+    }
+  };
+  input.click();
 }
 
 // ── EDITAR / CANCELAR AUSENCIA ──────────────────────────────
