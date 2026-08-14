@@ -1346,6 +1346,7 @@ async function cargarResumen() {
 // ACTIVIDAD HOY
 // ════════════════════════════════════════
 async function cargarActividadHoy() {
+  if (!empleadosCache.length) await cargarEmpleadosEnSelectores();
   const hoy = new Date();
   document.getElementById('actividad-fecha').textContent =
     hoy.toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
@@ -1361,9 +1362,12 @@ async function cargarActividadHoy() {
     );
     const fichajes = data.value || [];
 
+    // Solo empleados activos (dados de baja no deben aparecer en la actividad de hoy)
+    const empleadosActivos = empleadosCache.filter(e => e.fields.Activo !== false);
+
     // Tarjetas en vivo
     const listaViva = document.getElementById('lista-viva');
-    if (!empleadosCache.length) {
+    if (!empleadosActivos.length) {
       listaViva.innerHTML = '<div class="vacio"><div class="ico">👥</div>Sin empleados</div>';
     } else {
       const ultimoPorEmp = {};
@@ -1372,7 +1376,7 @@ async function cargarActividadHoy() {
         if (!ultimoPorEmp[emp] || f.fields.Timestamp > ultimoPorEmp[emp].fields.Timestamp)
           ultimoPorEmp[emp] = f;
       });
-      listaViva.innerHTML = empleadosCache.map(e => {
+      listaViva.innerHTML = empleadosActivos.map(e => {
         const nombre = e.fields.Title;
         const ult = ultimoPorEmp[nombre];
         const trabajando = ult && ult.fields.TipoFichaje === 'ENTRADA';
@@ -1390,8 +1394,11 @@ async function cargarActividadHoy() {
       }).join('');
     }
 
-    // Tabla fichajes de hoy
-    const sorted = [...fichajes].sort((a,b) => b.fields.Timestamp.localeCompare(a.fields.Timestamp));
+    // Tabla fichajes de hoy (solo empleados activos)
+    const nombresActivos = new Set(empleadosActivos.map(e => e.fields.Title));
+    const sorted = fichajes
+      .filter(f => nombresActivos.has(f.fields.EmpleadoID))
+      .sort((a,b) => b.fields.Timestamp.localeCompare(a.fields.Timestamp));
     renderTablaFichajes('tabla-hoy', sorted, 4);
   } catch(err) {
     document.getElementById('lista-viva').innerHTML = `<div class="vacio">Error: ${err.message}</div>`;
