@@ -442,8 +442,8 @@ tbody tr:hover { background: var(--gris-fondo); }
         </div>
         <div class="tabla-wrap">
           <table>
-            <thead><tr><th>Empleado</th><th>Tipo</th><th>Fecha</th><th>Hora</th><th>Ubicación</th></tr></thead>
-            <tbody id="tabla-reciente"><tr><td colspan="5" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
+            <thead><tr><th>Empleado</th><th>Tipo</th><th>Fecha</th><th>Hora</th><th>Ubicación</th><th></th></tr></thead>
+            <tbody id="tabla-reciente"><tr><td colspan="6" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -465,8 +465,8 @@ tbody tr:hover { background: var(--gris-fondo); }
         </div>
         <div class="tabla-wrap">
           <table>
-            <thead><tr><th>Empleado</th><th>Tipo</th><th>Hora</th><th>GPS</th></tr></thead>
-            <tbody id="tabla-hoy"><tr><td colspan="4" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
+            <thead><tr><th>Empleado</th><th>Tipo</th><th>Hora</th><th>GPS</th><th></th></tr></thead>
+            <tbody id="tabla-hoy"><tr><td colspan="5" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -493,8 +493,8 @@ tbody tr:hover { background: var(--gris-fondo); }
         </div>
         <div class="tabla-wrap">
           <table>
-            <thead><tr><th>Empleado</th><th>Tipo</th><th>Fecha</th><th>Hora</th><th>GPS</th></tr></thead>
-            <tbody id="tabla-historial"><tr><td colspan="5" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
+            <thead><tr><th>Empleado</th><th>Tipo</th><th>Fecha</th><th>Hora</th><th>GPS</th><th></th></tr></thead>
+            <tbody id="tabla-historial"><tr><td colspan="6" class="cargando"><span class="spinner"></span> Cargando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -511,6 +511,7 @@ tbody tr:hover { background: var(--gris-fondo); }
           <option value="PENDIENTE">Pendientes</option>
           <option value="">Todas</option>
           <option value="APROBADA">Aprobadas</option>
+          <option value="JUSTIFICANTE_PENDIENTE">Falta justificante</option>
           <option value="RECHAZADA">Rechazadas</option>
         </select>
         <select id="filtro-ausencia-empleado" onchange="cargarAusencias()">
@@ -1165,6 +1166,19 @@ async function graphPatch(endpoint, body) {
   return r.json();
 }
 
+async function graphDelete(endpoint) {
+  await obtenerToken();
+  const r = await fetch('https://graph.microsoft.com/v1.0' + endpoint, {
+    method: 'DELETE',
+    headers: { Authorization: 'Bearer ' + accessToken }
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error?.message || r.statusText);
+  }
+  return true;
+}
+
 async function cargarSiteId() {
   if (siteId) return siteId;
   const data = await graphCall('/sites/gesiolevante.sharepoint.com:/');
@@ -1498,21 +1512,33 @@ function renderTablaAusencias() {
   tbody.innerHTML = items.map(item => {
     const f = item.fields;
     const estado = f.Estado || 'PENDIENTE';
-    const badgeClass = estado === 'APROBADA' ? 'badge-verde' : estado === 'RECHAZADA' ? 'badge-rojo' : 'badge-naranja';
+    const badgeClass = estado === 'APROBADA' ? 'badge-verde'
+      : estado === 'RECHAZADA' ? 'badge-rojo'
+      : estado === 'JUSTIFICANTE_PENDIENTE' ? 'badge-naranja'
+      : 'badge-naranja';
+    const badgeTexto = estado === 'JUSTIFICANTE_PENDIENTE' ? '🔔 FALTA JUSTIFICANTE' : estado;
     const horasComp = f.HorasCompensadas ? `<br><small style="color:var(--verde)">−${f.HorasCompensadas}h compensadas</small>` : '';
-    const acciones = estado === 'PENDIENTE'
-      ? `<div class="acciones-ausencia">
+    let acciones;
+    if (estado === 'PENDIENTE') {
+      acciones = `<div class="acciones-ausencia">
           <button class="btn btn-verde" onclick="gestionarAusencia('${item.id}','APROBADA','${f.TipoAusencia || ''}')" title="Aprobar">✓ Aprobar</button>
           <button class="btn btn-rojo"  onclick="gestionarAusencia('${item.id}','RECHAZADA','')" title="Rechazar">✗ Rechazar</button>
-         </div>`
-      : `<span style="font-size:12px;color:var(--gris-texto)">—${horasComp}</span>`;
+         </div>`;
+    } else if (estado === 'JUSTIFICANTE_PENDIENTE') {
+      acciones = `<div class="acciones-ausencia">
+          <button class="btn btn-primario" onclick="subirJustificante('${item.id}','${(f.EmpleadoID||'').replace(/'/g,"\\'")}')" title="Subir justificante">📎 Subir</button>
+          <button class="btn" onclick="reclamarJustificante('${(f.EmpleadoID||'').replace(/'/g,"\\'")}','${f.TipoAusencia||''}','${f.FechaInicio||''}')" title="Reclamar por email">🔔 Reclamar</button>
+         </div>`;
+    } else {
+      acciones = `<span style="font-size:12px;color:var(--gris-texto)">—${horasComp}</span>`;
+    }
     return `<tr>
       <td><strong>${f.EmpleadoID || '—'}</strong></td>
       <td>${f.TipoAusencia || '—'}</td>
       <td>${formatFecha(f.FechaInicio)}</td>
       <td>${formatFecha(f.FechaFin)}</td>
       <td>${f.Motivo || '—'}${f.JustificanteURL ? ` <a href="${f.JustificanteURL}" target="_blank" title="Ver justificante" style="margin-left:4px">📎</a>` : ''}</td>
-      <td><span class="badge ${badgeClass}"><span class="dot"></span>${estado}</span></td>
+      <td><span class="badge ${badgeClass}"><span class="dot"></span>${badgeTexto}</span></td>
       <td>${acciones}</td>
     </tr>`;
   }).join('');
@@ -1529,16 +1555,25 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
       return;
     }
   }
+  // Los tipos médicos no se aprueban del todo hasta tener el justificante real:
+  // el permiso vale para acudir a la cita, pero queda marcado como pendiente de justificar.
+  const TIPOS_REQUIEREN_JUSTIFICANTE = ['Permiso médico', 'Baja médica'];
+  const requiereJustificante = nuevoEstado === 'APROBADA' && TIPOS_REQUIEREN_JUSTIFICANTE.includes(tipoAusencia);
+  const estadoFinal = requiereJustificante ? 'JUSTIFICANTE_PENDIENTE' : nuevoEstado;
   try {
-    const campos = { Estado: nuevoEstado };
+    const campos = { Estado: estadoFinal };
     if (horasCompensadas !== null) campos.HorasCompensadas = horasCompensadas;
     await graphPatch(
       `/sites/${siteId}/lists/Ausencias/items/${itemId}/fields`,
       campos
     );
-    toast(nuevoEstado === 'APROBADA' ? '✓ Ausencia aprobada' : '✗ Ausencia rechazada',
-          nuevoEstado === 'APROBADA' ? 'ok' : 'error');
-    if (nuevoEstado === 'APROBADA') {
+    if (requiereJustificante) {
+      toast('✓ Permiso concedido — queda pendiente de justificante', 'ok');
+    } else {
+      toast(nuevoEstado === 'APROBADA' ? '✓ Ausencia aprobada' : '✗ Ausencia rechazada',
+            nuevoEstado === 'APROBADA' ? 'ok' : 'error');
+    }
+    if (nuevoEstado === 'APROBADA' && !requiereJustificante) {
       try {
         const itemActualizado = await graphCall(`/sites/${siteId}/lists/Ausencias/items/${itemId}?$expand=fields`);
         pdfPermisoPendiente = { fields: itemActualizado.fields, itemId };
@@ -1661,6 +1696,57 @@ async function guardarPDFEnFichaEmpleado(f, itemId) {
   }
 }
 
+// Abre el selector de archivo, sube el justificante real (PDF/foto) a
+// Justificantes/{empleado}/ y, si tiene éxito, marca la ausencia como APROBADA.
+function subirJustificante(itemId, empleadoNombre) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.jpeg,.png,.heic';
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    try {
+      const driveId = await obtenerDriveId();
+      const token = await obtenerToken();
+      const carpeta = 'Justificantes/' + empleadoNombre;
+      const nombreArchivo = `Justificante_${empleadoNombre.replace(/\s+/g,'_')}_${Date.now()}_${file.name}`;
+      const r = await fetch(
+        `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${carpeta}/${nombreArchivo}:/content`,
+        { method: 'PUT', headers: { Authorization: 'Bearer ' + token, 'Content-Type': file.type || 'application/octet-stream' }, body: file }
+      );
+      if (!r.ok) throw new Error('No se pudo subir el archivo');
+      const resultado = await r.json();
+      await graphPatch(
+        `/sites/${siteId}/lists/Ausencias/items/${itemId}/fields`,
+        { JustificanteURL: resultado.webUrl, Estado: 'APROBADA' }
+      );
+      toast('✓ Justificante subido — ausencia aprobada del todo', 'ok');
+      await cargarAusencias();
+    } catch(err) {
+      toast('Error al subir justificante: ' + err.message, 'error');
+    }
+  };
+  input.click();
+}
+
+// Abre el cliente de correo con un email pre-rellenado recordando al
+// empleado que falta el justificante. No hay envío automático (requeriría
+// permisos adicionales de Graph): esto solo prepara el mensaje.
+function reclamarJustificante(empleadoNombre, tipo, fechaInicio) {
+  const emp = (empleadosCache || []).find(e => e.fields.Title === empleadoNombre);
+  const email = emp?.fields?.Email;
+  if (!email) {
+    toast('No tengo el email de ' + empleadoNombre + ' — revísalo en Empleados', 'error');
+    return;
+  }
+  const asunto = encodeURIComponent(`Falta justificante — ${tipo || 'permiso'} del ${formatFecha(fechaInicio)}`);
+  const cuerpo = encodeURIComponent(
+    `Hola ${empleadoNombre},\n\nTe recordamos que falta subir/entregar el justificante médico correspondiente al ${tipo || 'permiso'} del ${formatFecha(fechaInicio)}.\n\nEn cuanto lo tengas, súbelo desde la app o entrégalo en administración.\n\nGracias.`
+  );
+  window.location.href = `mailto:${email}?subject=${asunto}&body=${cuerpo}`;
+  toast('Abriendo email para ' + empleadoNombre, 'ok');
+}
+
 // ════════════════════════════════════════
 // EXPORTAR
 // ════════════════════════════════════════
@@ -1680,7 +1766,7 @@ async function exportarMesCSV() {
     const data = await graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=500&$filter=${filtro}`);
     const items = (data.value || []).sort((a,b) => a.fields.Timestamp.localeCompare(b.fields.Timestamp));
     const empData = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
-    let ausFiltroMes = `fields/Estado eq 'APROBADA' and fields/FechaInicio le '${hasta}' and fields/FechaFin ge '${desde}'`;
+    let ausFiltroMes = `(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE') and fields/FechaInicio le '${hasta}' and fields/FechaFin ge '${desde}'`;
     if (emp) ausFiltroMes += ` and fields/EmpleadoID eq '${emp}'`;
     const ausDataMes = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=${ausFiltroMes}`);
     const csv = generarCSVFichajes(items, empData.value || [], ausDataMes.value || [], desde, hasta, emp);
@@ -1700,7 +1786,7 @@ async function exportarAnoCSV() {
     const data = await graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=2000&$filter=fields/Timestamp ge '${desde}' and fields/Timestamp le '${hasta}'`);
     const items = (data.value || []).sort((a,b) => a.fields.Timestamp.localeCompare(b.fields.Timestamp));
     const empData2 = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
-    const ausDataAno = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=1000&$filter=fields/Estado eq 'APROBADA' and fields/FechaInicio le '${hasta}' and fields/FechaFin ge '${desde}'`);
+    const ausDataAno = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=1000&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE') and fields/FechaInicio le '${hasta}' and fields/FechaFin ge '${desde}'`);
     const csv = generarCSVFichajes(items, empData2.value || [], ausDataAno.value || [], desde, hasta, null);
     descargarCSV(csv, `fichajes_${anyo}.csv`);
     toast('✓ CSV anual descargado', 'ok');
@@ -1832,7 +1918,7 @@ async function exportarITSS() {
 function renderTablaFichajes(tbodyId, items, cols) {
   const tbody = document.getElementById(tbodyId);
   if (!items.length) {
-    tbody.innerHTML = `<tr><td colspan="${cols}" class="vacio"><div class="ico">📋</div>Sin registros</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${cols + 1}" class="vacio"><div class="ico">📋</div>Sin registros</td></tr>`;
     return;
   }
   tbody.innerHTML = items.map(item => {
@@ -1844,8 +1930,9 @@ function renderTablaFichajes(tbodyId, items, cols) {
     const gps = (f.Latitud && f.Longitud)
       ? `<a href="https://maps.google.com/?q=${f.Latitud},${f.Longitud}" target="_blank" style="color:var(--azul);font-size:12px">📍 Ver mapa</a>`
       : '<span style="color:var(--gris-texto);font-size:12px">Sin GPS</span>';
+    const borrar = `<button class="btn-icono" title="Eliminar fichaje" onclick="eliminarFichaje('${item.id}','${tbodyId}')" style="background:none;border:none;color:var(--rojo);cursor:pointer;font-size:15px;padding:4px 8px">🗑️</button>`;
     if (cols === 4) {
-      return `<tr><td><strong>${f.EmpleadoID || '—'}</strong></td><td>${tipo}</td><td>${fecha.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</td><td>${gps}</td></tr>`;
+      return `<tr><td><strong>${f.EmpleadoID || '—'}</strong></td><td>${tipo}</td><td>${fecha.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</td><td>${gps}</td><td>${borrar}</td></tr>`;
     }
     return `<tr>
       <td><strong>${f.EmpleadoID || '—'}</strong></td>
@@ -1853,8 +1940,24 @@ function renderTablaFichajes(tbodyId, items, cols) {
       <td>${fecha.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'})}</td>
       <td>${fecha.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</td>
       <td>${gps}</td>
+      <td>${borrar}</td>
     </tr>`;
   }).join('');
+}
+
+// Elimina un fichaje (p. ej. un duplicado por doble pulsación) y refresca
+// la tabla desde la que se lanzó la acción.
+async function eliminarFichaje(itemId, tbodyIdOrigen) {
+  if (!confirm('¿Eliminar este fichaje? Esta acción no se puede deshacer y puede afectar al cálculo de horas del empleado.')) return;
+  try {
+    await graphDelete(`/sites/${siteId}/lists/Fichajes/items/${itemId}`);
+    toast('✓ Fichaje eliminado', 'ok');
+    if (tbodyIdOrigen === 'tabla-reciente') await cargarResumen();
+    else if (tbodyIdOrigen === 'tabla-hoy') await cargarActividadHoy();
+    else if (tbodyIdOrigen === 'tabla-historial') await cargarHistorial();
+  } catch(err) {
+    toast('Error al eliminar: ' + err.message, 'error');
+  }
 }
 
 function calcularHorasMes(fichajes) {
@@ -2046,7 +2149,7 @@ async function cargarControlHoras() {
     const [dataFich, dataEmp, dataAus] = await Promise.all([
       graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=2000&$filter=fields/Timestamp ge '${desde.toISOString()}' and fields/Timestamp le '${hasta.toISOString()}'`),
       graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`),
-      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA'`)
+      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE')`)
     ]);
 
     const fichajes = dataFich.value || [];
@@ -2273,7 +2376,7 @@ async function cargarVacaciones() {
   try {
     const [dataEmp, dataAus] = await Promise.all([
       graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`),
-      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA'`)
+      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE')`)
     ]);
 
     const empleados = dataEmp.value || [];
@@ -2449,7 +2552,7 @@ async function exportarPDF() {
     (empleadosCache || []).forEach(e => { empMap[e.fields.Title] = e.fields; });
 
     // Cargar TODAS las ausencias aprobadas que se solapen con el período (para el informe día a día)
-    let urlAus = `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/FechaInicio le '${hasta}T23:59:59Z' and fields/FechaFin ge '${desde}T00:00:00Z'`;
+    let urlAus = `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE') and fields/FechaInicio le '${hasta}T23:59:59Z' and fields/FechaFin ge '${desde}T00:00:00Z'`;
     if (empFiltro) urlAus += ` and fields/EmpleadoID eq '${empFiltro}'`;
     const respAus = await graphCall(urlAus);
     const ausenciasPeriodo = respAus.value || [];
@@ -2803,8 +2906,7 @@ async function registrarBaja() {
       const nuevoInicio = inicio, nuevoFin = fin || '9999-12-31';
       (dataExist.value || []).forEach(item => {
         const f = item.fields;
-        if (f.Estado !== 'APROBADA') return;
-        const exInicio = (f.FechaInicio || '').slice(0,10);
+        if (f.Estado !== 'APROBADA' && f.Estado !== 'JUSTIFICANTE_PENDIENTE') return;
         const exFin = f.FechaFin ? f.FechaFin.slice(0,10) : '9999-12-31';
         if (!exInicio) return;
         const solapa = exInicio <= nuevoFin && exFin >= nuevoInicio;
@@ -3021,8 +3123,7 @@ async function renderCalendario() {
     const mapa = {};
     (dataAus.value || []).forEach(item => {
       const f = item.fields;
-      if (f.Estado !== 'APROBADA') return;
-      const fi = new Date(f.FechaInicio);
+      if (f.Estado !== 'APROBADA' && f.Estado !== 'JUSTIFICANTE_PENDIENTE') return;
       // Sin FechaFin = baja en curso: se pinta solo hasta hoy (se va añadiendo día a día hasta que se registre el alta).
       const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(limiteEnCurso);
       const inicioLoop = fi < primerDia ? new Date(primerDia) : fi;
@@ -3275,7 +3376,7 @@ async function exportarCalendarioPDF() {
   let mapa = {};
   try {
     const data = await graphCall(
-      `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=fields/Estado eq 'APROBADA' and fields/FechaFin ge '${desde}T00:00:00Z' and fields/FechaInicio le '${hasta}T23:59:59Z'`
+      `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE') and fields/FechaFin ge '${desde}T00:00:00Z' and fields/FechaInicio le '${hasta}T23:59:59Z'`
     );
     (data.value || []).forEach(item => {
       const f = item.fields;
