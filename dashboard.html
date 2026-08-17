@@ -2914,6 +2914,7 @@ async function registrarBaja() {
       (dataExist.value || []).forEach(item => {
         const f = item.fields;
         if (f.Estado !== 'APROBADA' && f.Estado !== 'JUSTIFICANTE_PENDIENTE') return;
+        const exInicio = (f.FechaInicio || '').slice(0,10);
         const exFin = f.FechaFin ? f.FechaFin.slice(0,10) : '9999-12-31';
         if (!exInicio) return;
         const solapa = exInicio <= nuevoFin && exFin >= nuevoInicio;
@@ -3131,6 +3132,7 @@ async function renderCalendario() {
     (dataAus.value || []).forEach(item => {
       const f = item.fields;
       if (f.Estado !== 'APROBADA' && f.Estado !== 'JUSTIFICANTE_PENDIENTE') return;
+      const fi = new Date(f.FechaInicio);
       // Sin FechaFin = baja en curso: se pinta solo hasta hoy (se va añadiendo día a día hasta que se registre el alta).
       const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(limiteEnCurso);
       const inicioLoop = fi < primerDia ? new Date(primerDia) : fi;
