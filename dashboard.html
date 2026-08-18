@@ -1525,6 +1525,7 @@ function renderTablaAusencias() {
       : 'badge-naranja';
     const badgeTexto = estado === 'JUSTIFICANTE_PENDIENTE' ? '🔔 FALTA JUSTIFICANTE' : estado;
     const horasComp = f.HorasCompensadas ? `<br><small style="color:var(--verde)">−${f.HorasCompensadas}h compensadas</small>` : '';
+    const horasAus = f.HorasAusencia ? `<br><small style="color:var(--gris-texto)">${f.HorasAusencia}h</small>` : '';
     let acciones;
     if (estado === 'PENDIENTE') {
       acciones = `<div class="acciones-ausencia">
@@ -1541,7 +1542,7 @@ function renderTablaAusencias() {
     }
     return `<tr>
       <td><strong>${f.EmpleadoID || '—'}</strong></td>
-      <td>${f.TipoAusencia || '—'}</td>
+      <td>${f.TipoAusencia || '—'}${horasAus}</td>
       <td>${formatFecha(f.FechaInicio)}</td>
       <td>${formatFecha(f.FechaFin)}</td>
       <td>${f.Motivo || '—'}${f.JustificanteURL ? ` <a href="${f.JustificanteURL}" target="_blank" title="Ver justificante" style="margin-left:4px">📎</a>` : ''}</td>
@@ -1650,6 +1651,7 @@ function construirPDFPermiso(f, itemId) {
     ['Días naturales', String(dias)],
   ];
   if (f.HorasCompensadas) filas.push(['Horas compensadas', String(f.HorasCompensadas)]);
+  if (f.HorasAusencia) filas.push(['Horas de ausencia', String(f.HorasAusencia)]);
   filas.push(['Motivo / observaciones', f.Motivo || '—']);
   filas.push(['Estado', 'APROBADA']);
   filas.push(['Fecha de aprobación', new Date().toLocaleDateString('es-ES')]);
@@ -2199,6 +2201,22 @@ async function cargarControlHoras() {
       compPorEmp[emp] += parseFloat(f.HorasCompensadas) || 0;
     });
 
+    // Horas de permiso médico / asuntos propios: cuentan como horas retribuidas (trabajadas)
+    const TIPOS_RETRIBUIDOS = ['Permiso médico', 'Asuntos propios'];
+    function horasRetribuidasPorEmp(desdeRango, hastaRango) {
+      const m = {};
+      ausencias.forEach(a => {
+        const f = a.fields;
+        if (!TIPOS_RETRIBUIDOS.includes(f.TipoAusencia)) return;
+        if (!f.HorasAusencia) return;
+        const fi = new Date(f.FechaInicio);
+        if (fi < desdeRango || fi > hastaRango) return;
+        const emp = f.EmpleadoID;
+        m[emp] = (m[emp] || 0) + (parseFloat(f.HorasAusencia) || 0);
+      });
+      return m;
+    }
+
     if (!empleados.length) {
       div.innerHTML = '<div class="vacio">No hay empleados</div>';
       return;
@@ -2221,6 +2239,10 @@ async function cargarControlHoras() {
       if (!porEmpAnyo[emp][dia]) porEmpAnyo[emp][dia] = [];
       porEmpAnyo[emp][dia].push(f.fields);
     });
+
+    // Horas retribuidas (permiso médico / asuntos propios) del período y del año
+    const horasRetribPeriodo = horasRetribuidasPorEmp(desde, hasta);
+    const horasRetribAnyo = horasRetribuidasPorEmp(desde_anyo_real, hasta_anyo);
 
     function calcularHorasEmp(registrosPorDia, jornadaDiaria) {
       let horasOrdinarias = 0, horasExtra = 0;
@@ -2261,10 +2283,16 @@ async function cargarControlHoras() {
       const limiteExtras = horasJornada >= 8 ? 80 : 60;
 
       // Cálculo período seleccionado
-      const { horasOrdinarias, horasExtra } = calcularHorasEmp(porEmp[nombre] || {}, jornadaDiaria);
+      const { horasOrdinarias: horasOrdinariasFichadas, horasExtra } = calcularHorasEmp(porEmp[nombre] || {}, jornadaDiaria);
 
       // Cálculo año completo (para extras acumuladas y control anual)
-      const { horasOrdinarias: horasOrdAnyo, horasExtra: horasExtraAnyo } = calcularHorasEmp(porEmpAnyo[nombre] || {}, jornadaDiaria);
+      const { horasOrdinarias: horasOrdAnyoFichadas, horasExtra: horasExtraAnyo } = calcularHorasEmp(porEmpAnyo[nombre] || {}, jornadaDiaria);
+
+      // Horas retribuidas por permiso médico / asuntos propios: se suman como trabajadas
+      const horasRetribEmpPeriodo = horasRetribPeriodo[nombre] || 0;
+      const horasRetribEmpAnyo = horasRetribAnyo[nombre] || 0;
+      const horasOrdinarias = horasOrdinariasFichadas + horasRetribEmpPeriodo;
+      const horasOrdAnyo = horasOrdAnyoFichadas + horasRetribEmpAnyo;
 
       // Compensaciones aprobadas (horas exactas)
       const horasComp = compPorEmp[nombre] || 0;
@@ -2296,6 +2324,7 @@ async function cargarControlHoras() {
             <div class="horas-barra">
               <div class="horas-barra-fill ordinaria" style="width:${pctOrdinaria}%"></div>
             </div>
+            ${horasRetribEmpPeriodo > 0 ? `<div style="font-size:11px;color:var(--gris-texto);margin-top:2px;">Incluye ${horasRetribEmpPeriodo.toFixed(1)}h de permiso médico/asuntos propios</div>` : ''}
           </div>
 
           <div class="horas-barra-wrap">

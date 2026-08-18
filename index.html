@@ -947,7 +947,7 @@
   <div class="form-ausencia">
     <div class="campo-grupo">
       <label>Tipo de ausencia</label>
-      <select id="tipo-ausencia">
+      <select id="tipo-ausencia" onchange="actualizarCampoHoras()">
         <option value="">Selecciona...</option>
         <option value="Vacaciones">Vacaciones</option>
         <option value="Permiso médico">Permiso médico</option>
@@ -968,6 +968,11 @@
     </div>
 
     <div id="resumen-dias-ausencia" style="display:none;background:var(--verde);color:#fff;border-radius:10px;padding:10px 14px;font-size:14px;font-weight:600;text-align:center;margin-bottom:4px;"></div>
+
+    <div class="campo-grupo" id="grupo-horas-ausencia" style="display:none;">
+      <label>Horas de ausencia</label>
+      <input type="number" id="horas-ausencia" placeholder="Ej: 4" step="0.5" min="0.5" max="8">
+    </div>
 
     <div class="campo-grupo">
       <label>Motivo (opcional)</label>
@@ -1008,7 +1013,7 @@
 
     <div class="campo-grupo">
       <label>Tipo de ausencia</label>
-      <select id="editar-tipo-ausencia">
+      <select id="editar-tipo-ausencia" onchange="actualizarCampoHorasEditar()">
         <option value="Vacaciones">Vacaciones</option>
         <option value="Permiso médico">Permiso médico</option>
         <option value="Compensación de horas">Compensación de horas</option>
@@ -1028,6 +1033,11 @@
     </div>
 
     <div id="resumen-dias-editar" style="display:none;background:var(--verde);color:#fff;border-radius:10px;padding:10px 14px;font-size:14px;font-weight:600;text-align:center;margin-bottom:4px;"></div>
+
+    <div class="campo-grupo" id="grupo-editar-horas-ausencia" style="display:none;">
+      <label>Horas de ausencia</label>
+      <input type="number" id="editar-horas-ausencia" placeholder="Ej: 4" step="0.5" min="0.5" max="8">
+    </div>
 
     <div class="campo-grupo">
       <label>Motivo (opcional)</label>
@@ -1337,7 +1347,8 @@ async function crearAusencia(datos) {
       Motivo: datos.motivo,
       Estado: 'PENDIENTE',
       FechaSolicitud: new Date().toISOString(),
-      JustificanteURL: datos.justificanteURL || ''
+      JustificanteURL: datos.justificanteURL || '',
+      HorasAusencia: datos.horas ?? null
     }
   };
   return await graphCall(`/sites/${siteId}/lists/Ausencias/items`, 'POST', item);
@@ -1750,13 +1761,13 @@ async function cargarAusencias() {
           <div class="ausencia-tipo">${f.TipoAusencia}</div>
           <div class="ausencia-badge badge-${estado}">${textoBadge}</div>
         </div>
-        <div class="ausencia-fechas">${fi} — ${ff} · ${f.Dias || 1} día${f.Dias !== 1 ? 's' : ''}</div>
+        <div class="ausencia-fechas">${fi} — ${ff} · ${f.Dias || 1} día${f.Dias !== 1 ? 's' : ''}${f.HorasAusencia ? ` · ${f.HorasAusencia}h` : ''}</div>
         ${f.Motivo ? `<div style="font-size:13px;color:var(--gris-medio);margin-top:6px;">${f.Motivo}</div>` : ''}
         ${f.AdminComentario ? `<div style="font-size:13px;color:var(--verde);margin-top:6px;font-style:italic;">"${f.AdminComentario}"</div>` : ''}
         ${faltaJustificante ? `<div style="font-size:12px;color:#9A3412;margin-top:6px;">Ya puedes acudir a la cita — sube el justificante en cuanto lo tengas.</div>
         <button style="width:100%;background:#F97316;color:#fff;border:none;padding:9px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-top:10px;" onclick="subirJustificantePendiente('${a.id}')">📎 Subir justificante</button>` : ''}
         ${esPendiente ? `<div style="display:flex;gap:8px;margin-top:10px;">
-          <button style="flex:1;background:var(--azul);color:#fff;border:none;padding:7px;border-radius:8px;font-size:13px;cursor:pointer;" onclick="editarAusencia('${a.id}','${f.TipoAusencia}','${f.FechaInicio.slice(0,10)}','${f.FechaFin.slice(0,10)}',encodeURIComponent('${(f.Motivo||'')}'))">✏️ Modificar</button>
+          <button style="flex:1;background:var(--azul);color:#fff;border:none;padding:7px;border-radius:8px;font-size:13px;cursor:pointer;" onclick="editarAusencia('${a.id}','${f.TipoAusencia}','${f.FechaInicio.slice(0,10)}','${f.FechaFin.slice(0,10)}',encodeURIComponent('${(f.Motivo||'')}'),'${f.HorasAusencia||''}')">✏️ Modificar</button>
           <button style="flex:1;background:#fff;color:var(--rojo);border:1.5px solid var(--rojo);padding:7px;border-radius:8px;font-size:13px;cursor:pointer;" onclick="cancelarAusencia('${a.id}')">🗑️ Cancelar</button>
         </div>` : ''}
       </div>`;
@@ -1792,15 +1803,16 @@ function subirJustificantePendiente(id) {
 }
 
 // ── EDITAR / CANCELAR AUSENCIA ──────────────────────────────
-function editarAusencia(id, tipo, fechaInicio, fechaFin, motivoCodificado) {
+function editarAusencia(id, tipo, fechaInicio, fechaFin, motivoCodificado, horas) {
   document.getElementById('editar-ausencia-id').value = id;
   document.getElementById('editar-tipo-ausencia').value = tipo;
   document.getElementById('editar-fecha-inicio').value = fechaInicio;
   document.getElementById('editar-fecha-fin').value = fechaFin;
   document.getElementById('editar-motivo').value = decodeURIComponent(motivoCodificado);
+  document.getElementById('editar-horas-ausencia').value = horas || '';
   document.getElementById('error-editar-ausencia').textContent = '';
   navegar('editar-ausencia');
-  setTimeout(actualizarRangoEditar, 50);
+  setTimeout(() => { actualizarRangoEditar(); actualizarCampoHorasEditar(); }, 50);
 }
 
 async function guardarEdicionAusencia() {
@@ -1809,10 +1821,20 @@ async function guardarEdicionAusencia() {
   const fi = document.getElementById('editar-fecha-inicio').value;
   const ff = document.getElementById('editar-fecha-fin').value;
   const motivo = document.getElementById('editar-motivo').value;
+  const horasInput = document.getElementById('editar-horas-ausencia').value;
   const errDiv = document.getElementById('error-editar-ausencia');
 
   if (!fi || !ff) { errDiv.textContent = 'Las fechas son obligatorias'; return; }
   if (new Date(ff) < new Date(fi)) { errDiv.textContent = 'La fecha fin no puede ser anterior a la de inicio'; return; }
+
+  let horas = null;
+  if (TIPOS_REQUIEREN_HORAS.includes(tipo)) {
+    horas = parseFloat(horasInput);
+    if (!horasInput || isNaN(horas) || horas <= 0) {
+      errDiv.textContent = 'Indica las horas de ausencia';
+      return;
+    }
+  }
 
   const dias = Math.round((new Date(ff) - new Date(fi)) / 86400000) + 1;
   mostrarCargando('Guardando cambios...');
@@ -1822,7 +1844,8 @@ async function guardarEdicionAusencia() {
       FechaInicio: fi + 'T00:00:00.000Z',
       FechaFin: ff + 'T00:00:00.000Z',
       Dias: dias,
-      Motivo: motivo
+      Motivo: motivo,
+      HorasAusencia: horas
     });
     ocultarCargando();
     toast('✓ Solicitud modificada', 'ok');
@@ -1866,11 +1889,21 @@ async function enviarAusencia() {
   const fi = document.getElementById('fecha-inicio-ausencia').value;
   const ff = document.getElementById('fecha-fin-ausencia').value;
   const motivo = document.getElementById('motivo-ausencia').value;
+  const horasInput = document.getElementById('horas-ausencia').value;
   const errDiv = document.getElementById('error-ausencia');
 
   if (!tipo) { errDiv.textContent = 'Selecciona el tipo de ausencia'; return; }
   if (!fi || !ff) { errDiv.textContent = 'Indica las fechas'; return; }
   if (new Date(ff) < new Date(fi)) { errDiv.textContent = 'La fecha fin no puede ser anterior a la fecha inicio'; return; }
+
+  let horas = null;
+  if (TIPOS_REQUIEREN_HORAS.includes(tipo)) {
+    horas = parseFloat(horasInput);
+    if (!horasInput || isNaN(horas) || horas <= 0) {
+      errDiv.textContent = 'Indica las horas de ausencia';
+      return;
+    }
+  }
   errDiv.textContent = '';
 
   const dias = Math.ceil((new Date(ff) - new Date(fi)) / 86400000) + 1;
@@ -1890,7 +1923,7 @@ async function enviarAusencia() {
       justificanteURL = await subirJustificante(archivoJustificante);
     }
 
-    await crearAusencia({ tipo, fechaInicio: fi, fechaFin: ff, dias, motivo, justificanteURL });
+    await crearAusencia({ tipo, fechaInicio: fi, fechaFin: ff, dias, motivo, justificanteURL, horas });
     ocultarCargando();
     mostrarToast('✅ Solicitud enviada correctamente', 'exito');
 
@@ -1901,6 +1934,8 @@ async function enviarAusencia() {
     document.getElementById('motivo-ausencia').value = '';
     document.getElementById('archivo-nombre').textContent = '';
     archivoJustificante = null;
+    document.getElementById('horas-ausencia').value = '';
+    document.getElementById('grupo-horas-ausencia').style.display = 'none';
 
     navegar('ausencias');
   } catch(e) {
@@ -1988,6 +2023,31 @@ function actualizarRangoAusencia() {
     resumen.textContent = dias === 1 ? '1 día seleccionado' : dias + ' días seleccionados';
   } else {
     resumen.style.display = 'none';
+  }
+}
+
+// Tipos de ausencia que requieren indicar horas concretas (no día completo)
+const TIPOS_REQUIEREN_HORAS = ['Permiso médico', 'Asuntos propios'];
+
+function actualizarCampoHoras() {
+  const tipo = document.getElementById('tipo-ausencia').value;
+  const grupo = document.getElementById('grupo-horas-ausencia');
+  if (TIPOS_REQUIEREN_HORAS.includes(tipo)) {
+    grupo.style.display = 'block';
+  } else {
+    grupo.style.display = 'none';
+    document.getElementById('horas-ausencia').value = '';
+  }
+}
+
+function actualizarCampoHorasEditar() {
+  const tipo = document.getElementById('editar-tipo-ausencia').value;
+  const grupo = document.getElementById('grupo-editar-horas-ausencia');
+  if (TIPOS_REQUIEREN_HORAS.includes(tipo)) {
+    grupo.style.display = 'block';
+  } else {
+    grupo.style.display = 'none';
+    document.getElementById('editar-horas-ausencia').value = '';
   }
 }
 
