@@ -3416,20 +3416,30 @@ async function exportarCalendarioPDF() {
 
   // Obtener datos del mapa actual
   const primerDia = new Date(anyo, mes, 1);
-  const ultimoDia = new Date(anyo, mes + 1, 0);
-  const desde = primerDia.toISOString().slice(0, 10);
-  const hasta  = ultimoDia.toISOString().slice(0, 10);
+  // Fin del último día del mes (23:59:59.999 local), no su inicio — igual que en
+  // renderCalendario: comparar contra el inicio del día dejaba el día 31 fuera al
+  // convertir a UTC en horario de verano.
+  const ultimoDia = new Date(anyo, mes + 1, 0, 23, 59, 59, 999);
 
   let mapa = {};
   try {
-    const data = await graphCall(
-      `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE') and fields/FechaFin ge '${desde}T00:00:00Z' and fields/FechaInicio le '${hasta}T23:59:59Z'`
-    );
+    // No usamos $filter de servidor: igual que en renderCalendario, traemos todo y
+    // filtramos en el cliente, para no dejar fuera las bajas en curso (sin FechaFin)
+    // ni sufrir el retraso de indexado de SharePoint en registros recién creados.
+    const data = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=999`);
+    const hoyDate = new Date();
+    hoyDate.setHours(0,0,0,0);
+    const limiteEnCurso = hoyDate < ultimoDia ? hoyDate : new Date(ultimoDia);
     (data.value || []).forEach(item => {
       const f = item.fields;
+      if (f.Estado !== 'APROBADA' && f.Estado !== 'JUSTIFICANTE_PENDIENTE') return;
       const fi = new Date(f.FechaInicio);
-      const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(fi);
-      for (let d = new Date(fi); d <= ff; d.setDate(d.getDate() + 1)) {
+      // Sin FechaFin = baja en curso: se pinta solo hasta hoy, igual que en pantalla.
+      const ff = f.FechaFin ? new Date(f.FechaFin) : new Date(limiteEnCurso);
+      const inicioLoop = fi < primerDia ? new Date(primerDia) : fi;
+      const finLoop = ff > ultimoDia ? new Date(ultimoDia) : ff;
+      if (finLoop < inicioLoop) return; // no solapa con el mes visible
+      for (let d = new Date(inicioLoop); d <= finLoop; d.setDate(d.getDate() + 1)) {
         const key = d.toISOString().slice(0, 10);
         if (!mapa[key]) mapa[key] = [];
         mapa[key].push({ emp: f.EmpleadoID || '—', tipo: f.TipoAusencia || 'Otros' });
