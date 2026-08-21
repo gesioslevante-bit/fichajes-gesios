@@ -2974,6 +2974,15 @@ async function registrarBaja() {
         });
         if (!resp.ok) throw new Error();
         ok++;
+        // Al registrarse manualmente ya queda como APROBADA, así que generamos
+        // y guardamos el justificante en la ficha del empleado igual que en
+        // gestionarAusencia (mismo patrón que las aprobaciones normales).
+        try {
+          const creado = await resp.json();
+          if (creado && creado.id) {
+            await guardarPDFEnFichaEmpleado(campos, creado.id);
+          }
+        } catch { /* no bloquea el alta si falla la generación del justificante */ }
       } catch { fallos++; }
     }
     if (todos) {
