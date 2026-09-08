@@ -1134,6 +1134,22 @@ async function comprobarNotificaciones() {
       }
     }
 
+    // 4. Justificantes médicos pendientes desde hace más de 1 mes (30 días)
+    //    sin resolver, todavía no descontados de las horas a compensar.
+    const pendientesJustif = (ausencias.value || []).filter(i => i.fields.Estado === 'JUSTIFICANTE_PENDIENTE');
+    pendientesJustif.forEach(item => {
+      const f = item.fields;
+      if (!f.FechaSolicitud) return;
+      const diasTranscurridos = (ahora - new Date(f.FechaSolicitud)) / 86400000;
+      if (diasTranscurridos >= 30) {
+        enviarNotif(
+          `justif-vencido-${item.id}`,
+          '⏰ Justificante vencido',
+          `${f.EmpleadoID || 'Un empleado'} lleva más de un mes sin presentar el justificante de "${f.TipoAusencia || 'ausencia'}". Revisa si descontar las horas.`,
+        );
+      }
+    });
+
   } catch(err) {
     console.warn('Error comprobando notificaciones:', err.message);
   }
@@ -1522,10 +1538,16 @@ function renderTablaAusencias() {
     const badgeClass = estado === 'APROBADA' ? 'badge-verde'
       : estado === 'RECHAZADA' ? 'badge-rojo'
       : estado === 'JUSTIFICANTE_PENDIENTE' ? 'badge-naranja'
+      : estado === 'DESCONTADA' ? 'badge-gris'
       : 'badge-naranja';
-    const badgeTexto = estado === 'JUSTIFICANTE_PENDIENTE' ? '🔔 FALTA JUSTIFICANTE' : estado;
+    const badgeTexto = estado === 'JUSTIFICANTE_PENDIENTE' ? '🔔 FALTA JUSTIFICANTE'
+      : estado === 'DESCONTADA' ? '💸 HORAS DESCONTADAS'
+      : estado;
     const horasComp = f.HorasCompensadas ? `<br><small style="color:var(--verde)">−${f.HorasCompensadas}h compensadas</small>` : '';
     const horasAus = f.HorasAusencia ? `<br><small style="color:var(--gris-texto)">${f.HorasAusencia}h</small>` : '';
+    // Más de 30 días desde la solicitud sin subir el justificante médico
+    const diasSinJustif = f.FechaSolicitud ? (new Date() - new Date(f.FechaSolicitud)) / 86400000 : 0;
+    const justifVencido = estado === 'JUSTIFICANTE_PENDIENTE' && diasSinJustif >= 30;
     let acciones;
     if (estado === 'PENDIENTE') {
       acciones = `<div class="acciones-ausencia">
@@ -1536,7 +1558,9 @@ function renderTablaAusencias() {
       acciones = `<div class="acciones-ausencia">
           <button class="btn btn-primario" onclick="subirJustificante('${item.id}','${(f.EmpleadoID||'').replace(/'/g,"\\'")}')" title="Subir justificante">📎 Subir</button>
           <button class="btn" onclick="reclamarJustificante('${(f.EmpleadoID||'').replace(/'/g,"\\'")}','${f.TipoAusencia||''}','${f.FechaInicio||''}')" title="Reclamar por email">🔔 Reclamar</button>
-         </div>`;
+          ${justifVencido ? `<button class="btn btn-rojo" onclick="descontarHorasJustificante('${item.id}','${(f.EmpleadoID||'').replace(/'/g,"\\'")}',${f.HorasAusencia || 0})" title="Descontar de horas a compensar">💸 Descontar horas</button>` : ''}
+         </div>
+         ${justifVencido ? `<div style="font-size:11px;color:var(--rojo);margin-top:4px;">⏰ Lleva ${Math.floor(diasSinJustif)} días sin justificante</div>` : ''}`;
     } else {
       acciones = `<span style="font-size:12px;color:var(--gris-texto)">—${horasComp}</span>`;
     }
@@ -1598,6 +1622,28 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
     const badge = document.getElementById('badge-ausencias');
     if (pend > 0) { badge.textContent = pend; badge.style.display = 'inline'; }
     else badge.style.display = 'none';
+  } catch(err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+// Si pasa más de un mes desde la solicitud sin subir el justificante médico,
+// el admin puede confirmar el descuento manual de esas horas: se marcan como
+// "DESCONTADA" y se restan del cálculo de extras netas en Control de horas
+// (mismo efecto que unas horas compensadas).
+async function descontarHorasJustificante(itemId, empleado, horas) {
+  if (!horas || horas <= 0) {
+    toast('Esta ausencia no tiene horas registradas para descontar', 'error');
+    return;
+  }
+  if (!confirm(`¿Descontar ${horas}h de las horas a compensar de ${empleado} por no haber presentado el justificante?\n\nEsta acción no se puede deshacer.`)) return;
+  try {
+    await graphPatch(
+      `/sites/${siteId}/lists/Ausencias/items/${itemId}/fields`,
+      { Estado: 'DESCONTADA', HorasCompensadas: horas }
+    );
+    toast(`✓ ${horas}h descontadas de las horas a compensar`, 'ok');
+    await cargarAusencias();
   } catch(err) {
     toast('Error: ' + err.message, 'error');
   }
@@ -1999,9 +2045,11 @@ function generarCSVFichajes(items, empleadosCache, ausencias, desde, hasta, empF
   });
   const empleadosLista = empFiltro ? [empFiltro] : (empleadosCache || []).map(e => e.fields.Title);
 
-  // Mapa de horas compensadas por empleado (solo tipo Compensación de horas)
+  // Mapa de horas compensadas por empleado: horas realmente compensadas
+  // (tipo "Compensación de horas") y horas descontadas por falta de
+  // justificante médico (estado "DESCONTADA"), ambas restan de las extras netas.
   const compMap = {};
-  (ausencias || []).filter(c => c.fields.TipoAusencia === 'Compensación de horas').forEach(c => {
+  (ausencias || []).filter(c => c.fields.TipoAusencia === 'Compensación de horas' || c.fields.Estado === 'DESCONTADA').forEach(c => {
     const emp = c.fields.EmpleadoID || '';
     compMap[emp] = (compMap[emp] || 0) + (parseFloat(c.fields.HorasCompensadas) || 0);
   });
@@ -2198,11 +2246,13 @@ async function cargarControlHoras() {
     });
 
     // Compensaciones aprobadas en el período (usando HorasCompensadas exactas)
+    // + horas descontadas por falta de justificante médico
     const compPorEmp = {};
     ausencias.forEach(a => {
       const f = a.fields;
-      if (f.TipoAusencia !== 'Compensación de horas') return;
-      if (f.Estado !== 'APROBADA') return;
+      const esCompensacion = f.TipoAusencia === 'Compensación de horas' && f.Estado === 'APROBADA';
+      const esDescuento = f.Estado === 'DESCONTADA';
+      if (!esCompensacion && !esDescuento) return;
       const emp = f.EmpleadoID;
       if (!compPorEmp[emp]) compPorEmp[emp] = 0;
       compPorEmp[emp] += parseFloat(f.HorasCompensadas) || 0;
@@ -2595,14 +2645,15 @@ async function exportarPDF() {
     (empleadosCache || []).forEach(e => { empMap[e.fields.Title] = e.fields; });
 
     // Cargar TODAS las ausencias aprobadas que se solapen con el período (para el informe día a día)
-    let urlAus = `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE') and fields/FechaInicio le '${hasta}T23:59:59Z' and fields/FechaFin ge '${desde}T00:00:00Z'`;
+    let urlAus = `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE' or fields/Estado eq 'DESCONTADA') and fields/FechaInicio le '${hasta}T23:59:59Z' and fields/FechaFin ge '${desde}T00:00:00Z'`;
     if (empFiltro) urlAus += ` and fields/EmpleadoID eq '${empFiltro}'`;
     const respAus = await graphCall(urlAus);
     const ausenciasPeriodo = respAus.value || [];
 
-    // Cargar horas compensadas aprobadas en el período
+    // Cargar horas compensadas aprobadas en el período + horas descontadas
+    // por falta de justificante médico
     const compMap = {};
-    ausenciasPeriodo.filter(c => c.fields.TipoAusencia === 'Compensación de horas').forEach(c => {
+    ausenciasPeriodo.filter(c => c.fields.TipoAusencia === 'Compensación de horas' || c.fields.Estado === 'DESCONTADA').forEach(c => {
       const emp = c.fields.EmpleadoID || '';
       const horas = parseFloat(c.fields.HorasCompensadas) || 0;
       compMap[emp] = (compMap[emp] || 0) + horas;
