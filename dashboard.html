@@ -2130,6 +2130,13 @@ function formatFecha(ts) {
   return new Date(ts).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', year:'numeric' });
 }
 
+// Igual que formatFecha pero con año en 2 dígitos (dd/mm/aa), usada en
+// la tabla de Bajas y ausencias.
+function formatFechaCorta(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', year:'2-digit' });
+}
+
 
 // ════════════════════════════════════════
 // CONTROL DE HORAS
@@ -2887,8 +2894,8 @@ function renderTablaBajas() {
   };
   tbody.innerHTML = items.map(item => {
     const f = item.fields;
-    const fi = f.FechaInicio ? f.FechaInicio.slice(0,10) : '—';
-    const ff = f.FechaFin ? f.FechaFin.slice(0,10) : '<em style="color:var(--naranja)">En curso</em>';
+    const fi = formatFechaCorta(f.FechaInicio);
+    const ff = f.FechaFin ? formatFechaCorta(f.FechaFin) : '<em style="color:var(--naranja)">En curso</em>';
     let dias = '—';
     if (f.FechaInicio && f.FechaFin) {
       dias = diasEntreFechas(f.FechaInicio, f.FechaFin);
