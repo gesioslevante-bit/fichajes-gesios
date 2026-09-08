@@ -1336,6 +1336,14 @@ async function obtenerAusencias() {
 async function crearAusencia(datos) {
   const siteId = await obtenerSiteId();
   const titulo = `${estado.empleado.Title}_AUS_${Date.now()}`;
+
+  // Permiso médico sin justificante adjunto: se notifica (badge/aviso de
+  // "falta justificante") pero NO se aprueba hasta que se suba el justificante
+  // (ver subirJustificantePendiente, que la pasa a APROBADA al subirlo).
+  const estadoInicial = (datos.tipo === 'Permiso médico' && !datos.justificanteURL)
+    ? 'JUSTIFICANTE_PENDIENTE'
+    : 'PENDIENTE';
+
   const item = {
     fields: {
       Title: titulo,
@@ -1345,7 +1353,7 @@ async function crearAusencia(datos) {
       FechaInicio: datos.fechaInicio + 'T00:00:00.000Z',
       FechaFin: datos.fechaFin + 'T00:00:00.000Z',
       Motivo: datos.motivo,
-      Estado: 'PENDIENTE',
+      Estado: estadoInicial,
       FechaSolicitud: new Date().toISOString(),
       JustificanteURL: datos.justificanteURL || '',
       HorasAusencia: datos.horas ?? null
