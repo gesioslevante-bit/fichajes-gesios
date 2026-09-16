@@ -508,7 +508,7 @@ tbody tr:hover { background: var(--gris-fondo); }
       </div>
       <div class="filtros">
         <select id="filtro-ausencia-estado" onchange="cargarAusencias()">
-          <option value="PENDIENTE">Pendientes</option>
+          <option value="PENDIENTE">Pendientes de gestionar</option>
           <option value="">Todas</option>
           <option value="APROBADA">Aprobadas</option>
           <option value="JUSTIFICANTE_PENDIENTE">Falta justificante</option>
@@ -1098,6 +1098,17 @@ async function comprobarNotificaciones() {
         `Hay ${pendientes.length} solicitud${pendientes.length > 1 ? 'es' : ''} de ausencia pendiente${pendientes.length > 1 ? 's' : ''} de aprobar.`,
       );
     }
+    // Permisos médicos recién concedidos que aún no tienen justificante subido
+    // (esto incluye los que el empleado registra directamente sin adjuntar nada,
+    // que antes solo se veían al cabo de 30 días con el aviso de "vencido").
+    const sinJustifRecientes = (ausencias.value || []).filter(i => i.fields.Estado === 'JUSTIFICANTE_PENDIENTE');
+    if (sinJustifRecientes.length > 0) {
+      enviarNotif(
+        `sin-justificante-${hoy}`,
+        '🔔 Falta justificante médico',
+        `Hay ${sinJustifRecientes.length} permiso${sinJustifRecientes.length > 1 ? 's' : ''} médico${sinJustifRecientes.length > 1 ? 's' : ''} a la espera de que se suba el justificante.`,
+      );
+    }
 
     // 3. Horas extras cerca del límite (>=72h de 80h max)
     const anyoActual = new Date().getFullYear();
@@ -1482,7 +1493,15 @@ async function cargarAusencias() {
 
   let filtro = '';
   const partes = [];
-  if (estadoFiltro) partes.push(`fields/Estado eq '${estadoFiltro}'`);
+  // "Pendientes de gestionar" agrupa PENDIENTE (por aprobar/rechazar) y
+  // JUSTIFICANTE_PENDIENTE (permisos médicos ya concedidos pero sin justificante
+  // subido): antes solo se veía PENDIENTE por defecto y estas últimas quedaban
+  // invisibles hasta cambiar el filtro a mano.
+  if (estadoFiltro === 'PENDIENTE') {
+    partes.push(`(fields/Estado eq 'PENDIENTE' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE')`);
+  } else if (estadoFiltro) {
+    partes.push(`fields/Estado eq '${estadoFiltro}'`);
+  }
   if (empFiltro)    partes.push(`fields/EmpleadoID eq '${empFiltro}'`);
   if (partes.length) filtro = '&$filter=' + partes.join(' and ');
 
@@ -2213,7 +2232,10 @@ async function cargarControlHoras() {
     const [dataFich, dataEmp, dataAus] = await Promise.all([
       graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=2000&$filter=fields/Timestamp ge '${desde.toISOString()}' and fields/Timestamp le '${hasta.toISOString()}'`),
       graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`),
-      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE')`)
+      // Incluye DESCONTADA: si no, en cuanto se marca una ausencia como
+      // "descontar horas" desaparece de esta consulta y el descuento nunca
+      // llega a restarse de las horas a compensar (compPorEmp más abajo).
+      graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE' or fields/Estado eq 'DESCONTADA')`)
     ]);
 
     const fichajes = dataFich.value || [];
@@ -2258,13 +2280,18 @@ async function cargarControlHoras() {
       compPorEmp[emp] += parseFloat(f.HorasCompensadas) || 0;
     });
 
-    // Horas de permiso médico / asuntos propios: cuentan como horas retribuidas (trabajadas)
+    // Horas de permiso médico / asuntos propios: cuentan como horas retribuidas (trabajadas).
+    // Importante: solo cuando Estado === 'APROBADA', es decir, con el justificante ya subido
+    // (o sin necesitarlo, como "Asuntos propios"). Mientras está en JUSTIFICANTE_PENDIENTE
+    // no cuenta como trabajado todavía; si se acaba marcando DESCONTADA, esas horas
+    // se restan aparte de las horas a compensar (ver compPorEmp), no se suman aquí.
     const TIPOS_RETRIBUIDOS = ['Permiso médico', 'Asuntos propios'];
     function horasRetribuidasPorEmp(desdeRango, hastaRango) {
       const m = {};
       ausencias.forEach(a => {
         const f = a.fields;
         if (!TIPOS_RETRIBUIDOS.includes(f.TipoAusencia)) return;
+        if (f.Estado !== 'APROBADA') return;
         if (!f.HorasAusencia) return;
         const fi = new Date(f.FechaInicio);
         if (fi < desdeRango || fi > hastaRango) return;
