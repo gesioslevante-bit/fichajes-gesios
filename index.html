@@ -39,6 +39,7 @@
   .pantalla {
     display: none;
     min-height: 100vh;
+    min-height: 100dvh; /* altura visible real en móvil */
     flex-direction: column;
   }
   .pantalla.activa { display: flex; }
@@ -179,6 +180,33 @@
   .tecla:active { transform: scale(0.92); background: #dde8dd; }
   .tecla.borrar { font-size: 18px; color: var(--gris-medio); }
   .tecla.vacia { background: transparent; pointer-events: none; }
+
+  /* ── LOGIN PIN: compacto para que el teclado entero (incluido el 0) quepa sin scroll ── */
+  #pantalla-login {
+    padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  #pantalla-login .login-logo { margin-bottom: 14px; }
+  #pantalla-login .login-logo .icono {
+    width: 52px; height: 52px; font-size: 26px;
+    border-radius: 16px; margin-bottom: 8px;
+  }
+  #pantalla-login .login-logo h1 { font-size: 22px; }
+  #pantalla-login .login-card { padding: 20px 20px 16px; }
+  #pantalla-login .login-card h2 { font-size: 18px; margin-bottom: 4px; }
+  #pantalla-login .login-card p { margin-bottom: 8px; }
+  #pantalla-login .pin-display { margin: 12px 0; }
+  #pantalla-login .teclado-pin { gap: 10px; margin-top: 4px; }
+  #pantalla-login .tecla {
+    padding: 8px;
+    min-height: clamp(50px, 8.5vh, 64px);
+    min-height: clamp(50px, 8.5dvh, 64px);
+  }
+  #pantalla-login .error-texto { min-height: 18px; margin-top: 6px; }
+  @media (max-height: 620px) {
+    #pantalla-login .login-logo .icono,
+    #pantalla-login .login-logo p { display: none; }
+    #pantalla-login .login-logo { margin-bottom: 10px; }
+  }
 
   /* ── BOTONES ── */
   .btn {
@@ -689,21 +717,26 @@
     inset: 0;
     background: rgba(0,0,0,0.6);
     z-index: 150;
-    align-items: flex-end;
+    align-items: center;      /* centrado: los botones nunca quedan bajo la barra del móvil */
     justify-content: center;
+    padding: 16px;
+    height: 100vh;
+    height: 100dvh;
   }
   .modal-overlay.visible { display: flex; }
   .modal-sheet {
     background: var(--blanco);
-    border-radius: 24px 24px 0 0;
-    padding: 32px 24px env(safe-area-inset-bottom, 24px);
+    border-radius: 24px;
+    padding: 28px 24px 24px;
     width: 100%;
-    max-width: 480px;
-    animation: slideUp 0.3s ease;
+    max-width: 420px;
+    max-height: 100%;
+    overflow-y: auto;
+    animation: popIn 0.2s ease;
   }
-  @keyframes slideUp {
-    from { transform: translateY(100%); }
-    to { transform: translateY(0); }
+  @keyframes popIn {
+    from { transform: scale(0.94); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
   }
   .modal-icono { font-size: 48px; text-align: center; margin-bottom: 16px; }
   .modal-titulo {
@@ -1338,8 +1371,8 @@ async function crearAusencia(datos) {
   const titulo = `${estado.empleado.Title}_AUS_${Date.now()}`;
 
   // Permiso médico sin justificante adjunto: se notifica (badge/aviso de
-  // "falta justificante") pero NO se aprueba hasta que se suba el justificante
-  // (ver subirJustificantePendiente, que la pasa a APROBADA al subirlo).
+  // "falta justificante"). Al subir el justificante (ver subirJustificantePendiente)
+  // pasa a PENDIENTE para que la revisen y la aprueben manualmente.
   const estadoInicial = (datos.tipo === 'Permiso médico' && !datos.justificanteURL)
     ? 'JUSTIFICANTE_PENDIENTE'
     : 'PENDIENTE';
@@ -1785,8 +1818,8 @@ async function cargarAusencias() {
   }
 }
 
-// Sube el justificante real de una ausencia ya concedida (estado "falta justificante")
-// y la pasa automáticamente a APROBADA.
+// Sube el justificante real de una ausencia en estado "falta justificante"
+// y la pasa a PENDIENTE (nunca se aprueba sola: la aprueba una persona).
 function subirJustificantePendiente(id) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -1797,9 +1830,9 @@ function subirJustificantePendiente(id) {
     mostrarCargando('Subiendo justificante...');
     try {
       const url = await subirJustificante(archivo);
-      await actualizarAusencia(id, { JustificanteURL: url, Estado: 'APROBADA' });
+      await actualizarAusencia(id, { JustificanteURL: url, Estado: 'PENDIENTE' });
       ocultarCargando();
-      toast('✓ Justificante subido', 'ok');
+      toast('✓ Justificante subido. Queda pendiente de aprobación', 'ok');
       await cargarAusencias();
       await comprobarJustificantesPendientes();
     } catch(e) {
