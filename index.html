@@ -1077,6 +1077,16 @@
       <textarea id="editar-motivo" placeholder="Describe brevemente el motivo..."></textarea>
     </div>
 
+    <div class="campo-grupo">
+      <label>Justificante <span id="editar-justif-actual" style="font-weight:400;color:var(--gris-medio)"></span></label>
+      <div class="upload-area" onclick="document.getElementById('editar-archivo-input').click()">
+        <div class="upload-icono">📎</div>
+        <p>Toca para adjuntar <strong>foto o PDF</strong></p>
+        <div class="archivo-nombre" id="editar-archivo-nombre"></div>
+      </div>
+      <input type="file" id="editar-archivo-input" accept="image/*,.pdf" style="display:none" onchange="archivoEditarSeleccionado(this)">
+    </div>
+
     <div class="error-texto" id="error-editar-ausencia"></div>
 
     <div style="margin-top:auto; padding-top:16px;">
@@ -1772,6 +1782,14 @@ function cerrarModal() {
 // AUSENCIAS
 // ══════════════════════════════════════════
 let archivoJustificante = null;
+let archivoJustificanteEditar = null;
+
+function archivoEditarSeleccionado(input) {
+  if (input.files && input.files[0]) {
+    archivoJustificanteEditar = input.files[0];
+    document.getElementById('editar-archivo-nombre').textContent = `📎 ${archivoJustificanteEditar.name}`;
+  }
+}
 
 function archivoSeleccionado(input) {
   if (input.files && input.files[0]) {
@@ -1804,11 +1822,12 @@ async function cargarAusencias() {
         </div>
         <div class="ausencia-fechas">${fi} — ${ff} · ${f.Dias || 1} día${f.Dias !== 1 ? 's' : ''}${f.HorasAusencia ? ` · ${f.HorasAusencia}h` : ''}</div>
         ${f.Motivo ? `<div style="font-size:13px;color:var(--gris-medio);margin-top:6px;">${f.Motivo}</div>` : ''}
+        ${f.JustificanteURL ? `<a href="${f.JustificanteURL}" target="_blank" style="display:inline-block;font-size:13px;color:var(--azul);margin-top:6px;">📎 Ver justificante</a>` : ''}
         ${f.AdminComentario ? `<div style="font-size:13px;color:var(--verde);margin-top:6px;font-style:italic;">"${f.AdminComentario}"</div>` : ''}
         ${faltaJustificante ? `<div style="font-size:12px;color:#9A3412;margin-top:6px;">Ya puedes acudir a la cita — sube el justificante en cuanto lo tengas.</div>
         <button style="width:100%;background:#F97316;color:#fff;border:none;padding:9px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-top:10px;" onclick="subirJustificantePendiente('${a.id}')">📎 Subir justificante</button>` : ''}
         ${esPendiente ? `<div style="display:flex;gap:8px;margin-top:10px;">
-          <button style="flex:1;background:var(--azul);color:#fff;border:none;padding:7px;border-radius:8px;font-size:13px;cursor:pointer;" onclick="editarAusencia('${a.id}','${f.TipoAusencia}','${f.FechaInicio.slice(0,10)}','${f.FechaFin.slice(0,10)}',encodeURIComponent('${(f.Motivo||'')}'),'${f.HorasAusencia||''}')">✏️ Modificar</button>
+          <button style="flex:1;background:var(--azul);color:#fff;border:none;padding:7px;border-radius:8px;font-size:13px;cursor:pointer;" onclick="editarAusencia('${a.id}','${f.TipoAusencia}','${f.FechaInicio.slice(0,10)}','${f.FechaFin.slice(0,10)}',encodeURIComponent('${(f.Motivo||'')}'),'${f.HorasAusencia||''}',${f.JustificanteURL ? 'true' : 'false'})">✏️ Modificar</button>
           <button style="flex:1;background:#fff;color:var(--rojo);border:1.5px solid var(--rojo);padding:7px;border-radius:8px;font-size:13px;cursor:pointer;" onclick="cancelarAusencia('${a.id}')">🗑️ Cancelar</button>
         </div>` : ''}
       </div>`;
@@ -1844,7 +1863,11 @@ function subirJustificantePendiente(id) {
 }
 
 // ── EDITAR / CANCELAR AUSENCIA ──────────────────────────────
-function editarAusencia(id, tipo, fechaInicio, fechaFin, motivoCodificado, horas) {
+function editarAusencia(id, tipo, fechaInicio, fechaFin, motivoCodificado, horas, tieneJustif) {
+  archivoJustificanteEditar = null;
+  document.getElementById('editar-archivo-nombre').textContent = '';
+  document.getElementById('editar-archivo-input').value = '';
+  document.getElementById('editar-justif-actual').textContent = tieneJustif ? '(ya hay uno subido; si adjuntas otro lo sustituye)' : '';
   document.getElementById('editar-ausencia-id').value = id;
   document.getElementById('editar-tipo-ausencia').value = tipo;
   document.getElementById('editar-fecha-inicio').value = fechaInicio;
@@ -1880,14 +1903,20 @@ async function guardarEdicionAusencia() {
   const dias = Math.round((new Date(ff) - new Date(fi)) / 86400000) + 1;
   mostrarCargando('Guardando cambios...');
   try {
-    await actualizarAusencia(id, {
+    const campos = {
       TipoAusencia: tipo,
       FechaInicio: fi + 'T00:00:00.000Z',
       FechaFin: ff + 'T00:00:00.000Z',
       Dias: dias,
       Motivo: motivo,
       HorasAusencia: horas
-    });
+    };
+    if (archivoJustificanteEditar) {
+      document.getElementById('texto-cargando').textContent = 'Subiendo justificante...';
+      campos.JustificanteURL = await subirJustificante(archivoJustificanteEditar);
+      archivoJustificanteEditar = null;
+    }
+    await actualizarAusencia(id, campos);
     ocultarCargando();
     toast('✓ Solicitud modificada', 'ok');
     navegar('ausencias');
