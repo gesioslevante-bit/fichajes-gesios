@@ -1155,7 +1155,7 @@ async function comprobarNotificaciones() {
 
     // 4. Justificantes médicos pendientes desde hace más de 1 mes (30 días)
     //    sin resolver, todavía no descontados de las horas a compensar.
-    const pendientesJustif = (ausencias.value || []).filter(i => i.fields.Estado === 'JUSTIFICANTE_PENDIENTE');
+    const pendientesJustif = (ausencias.value || []).filter(i => ausenciaSinJustificante(i.fields));
     pendientesJustif.forEach(item => {
       const f = item.fields;
       if (!f.FechaSolicitud) return;
@@ -1492,6 +1492,18 @@ let ausenciasCache = [];
 let ausSortCol = 'inicio';
 let ausSortDir = 'desc';
 
+// Tipos que necesitan justificante real para darse por cerrados
+const TIPOS_REQUIEREN_JUSTIFICANTE = ['Permiso médico', 'Baja médica'];
+
+// Sin justificante = tipo médico, sin archivo y aún sin cerrar.
+// Incluye PENDIENTE (el trabajador la acaba de enviar) y JUSTIFICANTE_PENDIENTE
+// (la empresa ya concedió el permiso a falta del justificante).
+function ausenciaSinJustificante(f) {
+  return TIPOS_REQUIEREN_JUSTIFICANTE.includes(f.TipoAusencia)
+    && !f.JustificanteURL
+    && (f.Estado === 'PENDIENTE' || f.Estado === 'JUSTIFICANTE_PENDIENTE');
+}
+
 async function cargarAusencias() {
   const tbody = document.getElementById('tabla-ausencias');
   tbody.innerHTML = '<tr><td colspan="7" class="cargando"><span class="spinner"></span> Cargando...</td></tr>';
@@ -1567,20 +1579,28 @@ function renderTablaAusencias() {
       : estado === 'JUSTIFICANTE_PENDIENTE' ? 'badge-naranja'
       : estado === 'DESCONTADA' ? 'badge-gris'
       : 'badge-naranja';
+    const sinJustif = ausenciaSinJustificante(f);
     const badgeTexto = estado === 'JUSTIFICANTE_PENDIENTE' ? '🔔 FALTA JUSTIFICANTE'
+      : (estado === 'PENDIENTE' && sinJustif) ? '⏳ PENDIENTE · 🔔 SIN JUSTIFICANTE'
       : estado === 'DESCONTADA' ? '💸 HORAS DESCONTADAS'
       : estado;
     const horasComp = f.HorasCompensadas ? `<br><small style="color:var(--verde)">−${f.HorasCompensadas}h compensadas</small>` : '';
     const horasAus = f.HorasAusencia ? `<br><small style="color:var(--gris-texto)">${f.HorasAusencia}h</small>` : '';
     // Más de 30 días desde la solicitud sin subir el justificante médico
     const diasSinJustif = f.FechaSolicitud ? (new Date() - new Date(f.FechaSolicitud)) / 86400000 : 0;
-    const justifVencido = estado === 'JUSTIFICANTE_PENDIENTE' && diasSinJustif >= 30;
+    const justifVencido = sinJustif && diasSinJustif >= 30;
+    const empEsc = (f.EmpleadoID||'').replace(/'/g,"\\'");
     let acciones;
     if (estado === 'PENDIENTE') {
+      // Si es médico y aún no hay justificante: "Aprobar" solo concede el permiso
+      // a falta de justificante (pasa a JUSTIFICANTE_PENDIENTE), nunca lo cierra.
       acciones = `<div class="acciones-ausencia">
-          <button class="btn btn-verde" onclick="gestionarAusencia('${item.id}','APROBADA','${f.TipoAusencia || ''}')" title="Aprobar">✓ Aprobar</button>
+          <button class="btn btn-verde" onclick="gestionarAusencia('${item.id}','APROBADA','${f.TipoAusencia || ''}',${f.JustificanteURL ? 'true' : 'false'})" title="${sinJustif ? 'Conceder el permiso a falta de justificante' : 'Aprobar'}">${sinJustif ? '✓ Conceder (falta justif.)' : '✓ Aprobar'}</button>
           <button class="btn btn-rojo"  onclick="gestionarAusencia('${item.id}','RECHAZADA','')" title="Rechazar">✗ Rechazar</button>
-         </div>`;
+          ${sinJustif ? `<button class="btn btn-primario" onclick="subirJustificante('${item.id}','${empEsc}')" title="Subir justificante (aprueba del todo)">📎 Subir</button>
+          <button class="btn" onclick="reclamarJustificante('${empEsc}','${f.TipoAusencia||''}','${f.FechaInicio||''}')" title="Reclamar por email">🔔 Reclamar</button>` : ''}
+         </div>
+         ${justifVencido ? `<div style="font-size:11px;color:var(--rojo);margin-top:4px;">⏰ Lleva ${Math.floor(diasSinJustif)} días sin justificante</div>` : ''}`;
     } else if (estado === 'JUSTIFICANTE_PENDIENTE') {
       acciones = `<div class="acciones-ausencia">
           <button class="btn btn-primario" onclick="subirJustificante('${item.id}','${(f.EmpleadoID||'').replace(/'/g,"\\'")}')" title="Subir justificante">📎 Subir</button>
@@ -1603,7 +1623,7 @@ function renderTablaAusencias() {
   }).join('');
 }
 
-async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
+async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia, tieneJustificante = false) {
   let horasCompensadas = null;
   if (nuevoEstado === 'APROBADA' && tipoAusencia === 'Compensación de horas') {
     const input = prompt('¿Cuántas horas se compensan? (ej: 4, 2.5...)');
@@ -1616,8 +1636,8 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
   }
   // Los tipos médicos no se aprueban del todo hasta tener el justificante real:
   // el permiso vale para acudir a la cita, pero queda marcado como pendiente de justificar.
-  const TIPOS_REQUIEREN_JUSTIFICANTE = ['Permiso médico', 'Baja médica'];
-  const requiereJustificante = nuevoEstado === 'APROBADA' && TIPOS_REQUIEREN_JUSTIFICANTE.includes(tipoAusencia);
+  // Si el justificante ya está subido, se aprueba del todo.
+  const requiereJustificante = nuevoEstado === 'APROBADA' && !tieneJustificante && TIPOS_REQUIEREN_JUSTIFICANTE.includes(tipoAusencia);
   const estadoFinal = requiereJustificante ? 'JUSTIFICANTE_PENDIENTE' : nuevoEstado;
   try {
     const campos = { Estado: estadoFinal };
@@ -1638,7 +1658,8 @@ async function gestionarAusencia(itemId, nuevoEstado, tipoAusencia) {
         pdfPermisoPendiente = { fields: itemActualizado.fields, itemId };
         document.getElementById('aviso-pdf-nombre').textContent = itemActualizado.fields.EmpleadoID || '';
         document.getElementById('aviso-pdf').style.display = 'block';
-        await guardarPDFEnFichaEmpleado(itemActualizado.fields, itemId);
+        // noEnlazar=true si ya hay justificante real: no se sobrescribe su enlace con el PDF del permiso
+        await guardarPDFEnFichaEmpleado(itemActualizado.fields, itemId, !!itemActualizado.fields.JustificanteURL);
       } catch (errPdf) {
         toast('Aprobado, pero no se pudo guardar el justificante: ' + errPdf.message, 'error');
       }
