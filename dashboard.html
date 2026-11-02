@@ -512,11 +512,22 @@ tbody tr:hover { background: var(--gris-fondo); }
           <option value="">Todas</option>
           <option value="APROBADA">Aprobadas</option>
           <option value="JUSTIFICANTE_PENDIENTE">Falta justificante</option>
+          <option value="DESCONTADA">Horas descontadas</option>
           <option value="RECHAZADA">Rechazadas</option>
         </select>
         <select id="filtro-ausencia-empleado" onchange="cargarAusencias()">
           <option value="">Todos los empleados</option>
         </select>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-header"><h3>⚙️ Justificante de permisos médicos</h3></div>
+        <div style="padding:12px 16px;display:flex;gap:20px;flex-wrap:wrap;align-items:center;font-size:13px">
+          <label>Plazo para subirlo:
+            <input type="number" id="cfg-justif-dias" min="1" max="60" style="width:56px;padding:4px 6px" onchange="cambiarCfgJustif()"> días
+          </label>
+          <label style="cursor:pointer"><input type="checkbox" id="cfg-justif-auto" onchange="cambiarCfgJustif()"> Descontar las horas automáticamente al vencer el plazo</label>
+          <label style="cursor:pointer"><input type="checkbox" id="cfg-justif-avisos" onchange="cambiarCfgJustif()"> Avisarme de los justificantes pendientes</label>
+        </div>
       </div>
       <div class="card">
         <div class="card-header">
@@ -1109,8 +1120,9 @@ async function comprobarNotificaciones() {
     // Permisos médicos recién concedidos que aún no tienen justificante subido
     // (esto incluye los que el empleado registra directamente sin adjuntar nada,
     // que antes solo se veían al cabo de 30 días con el aviso de "vencido").
+    const cfgJ = leerCfgJustif();
     const sinJustifRecientes = (ausencias.value || []).filter(i => i.fields.Estado === 'JUSTIFICANTE_PENDIENTE');
-    if (sinJustifRecientes.length > 0) {
+    if (cfgJ.avisos && sinJustifRecientes.length > 0) {
       enviarNotif(
         `sin-justificante-${hoy}`,
         '🔔 Falta justificante médico',
@@ -1153,21 +1165,26 @@ async function comprobarNotificaciones() {
       }
     }
 
-    // 4. Justificantes médicos pendientes desde hace más de 1 mes (30 días)
-    //    sin resolver, todavía no descontados de las horas a compensar.
-    const pendientesJustif = (ausencias.value || []).filter(i => ausenciaSinJustificante(i.fields));
-    pendientesJustif.forEach(item => {
-      const f = item.fields;
-      if (!f.FechaSolicitud) return;
-      const diasTranscurridos = (ahora - new Date(f.FechaSolicitud)) / 86400000;
-      if (diasTranscurridos >= 30) {
-        enviarNotif(
-          `justif-vencido-${item.id}`,
-          '⏰ Justificante vencido',
-          `${f.EmpleadoID || 'Un empleado'} lleva más de un mes sin presentar el justificante de "${f.TipoAusencia || 'ausencia'}". Revisa si descontar las horas.`,
-        );
-      }
-    });
+    // 4. Plazo de justificante médico vencido: descuento automático de horas
+    //    (si está activado) y, solo si se piden avisos, notificación del resto.
+    const descontados = await descontarVencidosAuto();
+    if (descontados.length) {
+      try { await cargarAusencias(); } catch { /* no bloquea las notificaciones */ }
+    }
+    if (cfgJ.avisos) {
+      (ausencias.value || [])
+        .filter(i => ausenciaSinJustificante(i.fields) && !descontados.includes(i.id))
+        .forEach(item => {
+          const f = item.fields;
+          if (diasSinJustificante(f) >= cfgJ.dias) {
+            enviarNotif(
+              `justif-vencido-${item.id}`,
+              '⏰ Justificante vencido',
+              `${f.EmpleadoID || 'Un empleado'} lleva más de ${cfgJ.dias} días sin presentar el justificante de "${f.TipoAusencia || 'ausencia'}".`,
+            );
+          }
+        });
+    }
 
   } catch(err) {
     console.warn('Error comprobando notificaciones:', err.message);
@@ -1492,6 +1509,113 @@ let ausenciasCache = [];
 let ausSortCol = 'inicio';
 let ausSortDir = 'desc';
 
+// ── Ajustes del plazo de justificante médico (se guardan en este navegador) ──
+// avisos: notificaciones de justificantes pendientes (por defecto NO)
+// dias: plazo para subir el justificante (por defecto 3)
+// autoDescuento: descontar las horas solas al vencer el plazo (por defecto SÍ)
+function leerCfgJustif() {
+  let g = {};
+  try { g = JSON.parse(localStorage.getItem('cfgJustificantes') || '{}') || {}; } catch { g = {}; }
+  const dias = parseInt(g.dias, 10);
+  return {
+    avisos: g.avisos === true,
+    dias: (dias >= 1 && dias <= 60) ? dias : 3,
+    autoDescuento: g.autoDescuento !== false,
+    confirmado: g.confirmado === true
+  };
+}
+function guardarCfgJustif(parcial) {
+  const nueva = { ...leerCfgJustif(), ...parcial };
+  try { localStorage.setItem('cfgJustificantes', JSON.stringify(nueva)); } catch { /* sin almacenamiento: se usan los valores por defecto */ }
+  return nueva;
+}
+function pintarCfgJustif() {
+  const c = leerCfgJustif();
+  const d = document.getElementById('cfg-justif-dias');
+  const a = document.getElementById('cfg-justif-auto');
+  const v = document.getElementById('cfg-justif-avisos');
+  if (d) d.value = c.dias;
+  if (a) a.checked = c.autoDescuento;
+  if (v) v.checked = c.avisos;
+}
+async function cambiarCfgJustif() {
+  const dias = parseInt(document.getElementById('cfg-justif-dias').value, 10);
+  const nueva = guardarCfgJustif({
+    dias: (dias >= 1 && dias <= 60) ? dias : leerCfgJustif().dias,
+    autoDescuento: document.getElementById('cfg-justif-auto').checked,
+    avisos: document.getElementById('cfg-justif-avisos').checked
+  });
+  pintarCfgJustif();
+  toast('✓ Ajustes guardados', 'ok');
+  if (nueva.autoDescuento) {
+    try { await descontarVencidosAuto(); } catch (e) { console.warn('Descuento automático:', e.message); }
+  }
+  await cargarAusencias();
+}
+
+// Días desde que empezó a correr el plazo: lo más tardío entre la solicitud y
+// el fin del permiso (así un permiso pedido con antelación no vence antes de usarse).
+function diasSinJustificante(f) {
+  const fechas = [f.FechaSolicitud, f.FechaFin || f.FechaInicio]
+    .filter(Boolean).map(d => new Date(d)).filter(d => !isNaN(d));
+  if (!fechas.length) return 0;
+  return (Date.now() - Math.max(...fechas)) / 86400000;
+}
+
+// Descuenta de las horas a compensar los permisos médicos concedidos que siguen
+// sin justificante pasado el plazo. Solo "Permiso médico" (las bajas médicas
+// largas siguen siendo manuales). Devuelve los ids descontados.
+async function descontarVencidosAuto() {
+  const cfg = leerCfgJustif();
+  if (!cfg.autoDescuento) return [];
+  const r = await graphCall(
+    `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=200&$filter=fields/Estado eq 'JUSTIFICANTE_PENDIENTE'`
+  );
+  const vencidos = (r.value || []).filter(i => {
+    const f = i.fields;
+    return f.TipoAusencia === 'Permiso médico'
+      && !f.JustificanteURL
+      && (parseFloat(f.HorasAusencia) || 0) > 0
+      && diasSinJustificante(f) >= cfg.dias;
+  });
+  if (!vencidos.length) return [];
+
+  // Primera vez: confirmar, porque puede haber permisos antiguos acumulados.
+  if (!cfg.confirmado) {
+    const totalH = vencidos.reduce((t, i) => t + (parseFloat(i.fields.HorasAusencia) || 0), 0);
+    const ok = confirm(`Hay ${vencidos.length} permiso(s) médico(s) sin justificante con más de ${cfg.dias} días (${totalH} h en total).\n\n¿Descontar ahora esas horas? A partir de ahora se hará solo, sin preguntar.`);
+    if (!ok) {
+      guardarCfgJustif({ autoDescuento: false });
+      pintarCfgJustif();
+      toast('Descuento automático desactivado. Puedes activarlo en los ajustes de Ausencias.', 'error');
+      return [];
+    }
+    guardarCfgJustif({ confirmado: true });
+  }
+
+  const hechos = [];
+  let horasTot = 0;
+  for (const item of vencidos) {
+    const h = parseFloat(item.fields.HorasAusencia) || 0;
+    try {
+      await graphPatch(
+        `/sites/${siteId}/lists/Ausencias/items/${item.id}/fields`,
+        { Estado: 'DESCONTADA', HorasCompensadas: h }
+      );
+      hechos.push(item.id);
+      horasTot += h;
+    } catch (e) {
+      console.warn('No se pudo descontar', item.id, e.message);
+    }
+  }
+  if (hechos.length) {
+    const msg = `${hechos.length} permiso(s) médico(s) sin justificante: ${horasTot} h descontadas`;
+    toast('💸 ' + msg, 'ok');
+    enviarNotif(`auto-descuento-${Date.now()}`, '💸 Horas descontadas', msg);
+  }
+  return hechos;
+}
+
 // Tipos que necesitan justificante real para darse por cerrados
 const TIPOS_REQUIEREN_JUSTIFICANTE = ['Permiso médico', 'Baja médica'];
 
@@ -1505,6 +1629,7 @@ function ausenciaSinJustificante(f) {
 }
 
 async function cargarAusencias() {
+  pintarCfgJustif();
   const tbody = document.getElementById('tabla-ausencias');
   tbody.innerHTML = '<tr><td colspan="7" class="cargando"><span class="spinner"></span> Cargando...</td></tr>';
 
@@ -1586,9 +1711,9 @@ function renderTablaAusencias() {
       : estado;
     const horasComp = f.HorasCompensadas ? `<br><small style="color:var(--verde)">−${f.HorasCompensadas}h compensadas</small>` : '';
     const horasAus = f.HorasAusencia ? `<br><small style="color:var(--gris-texto)">${f.HorasAusencia}h</small>` : '';
-    // Más de 30 días desde la solicitud sin subir el justificante médico
-    const diasSinJustif = f.FechaSolicitud ? (new Date() - new Date(f.FechaSolicitud)) / 86400000 : 0;
-    const justifVencido = sinJustif && diasSinJustif >= 30;
+    // Plazo vencido (días configurables en los ajustes) sin subir el justificante médico
+    const diasSinJustif = diasSinJustificante(f);
+    const justifVencido = sinJustif && diasSinJustif >= leerCfgJustif().dias;
     const empEsc = (f.EmpleadoID||'').replace(/'/g,"\\'");
     let acciones;
     if (estado === 'PENDIENTE') {
@@ -1608,6 +1733,11 @@ function renderTablaAusencias() {
           ${justifVencido ? `<button class="btn btn-rojo" onclick="descontarHorasJustificante('${item.id}','${(f.EmpleadoID||'').replace(/'/g,"\\'")}',${f.HorasAusencia || 0})" title="Descontar de horas a compensar">💸 Descontar horas</button>` : ''}
          </div>
          ${justifVencido ? `<div style="font-size:11px;color:var(--rojo);margin-top:4px;">⏰ Lleva ${Math.floor(diasSinJustif)} días sin justificante</div>` : ''}`;
+    } else if (estado === 'DESCONTADA' && f.TipoAusencia === 'Permiso médico') {
+      acciones = `<div class="acciones-ausencia">
+          <button class="btn btn-primario" onclick="subirJustificante('${item.id}','${empEsc}',true)" title="Subir el justificante y devolver las horas descontadas">📎 Subir y devolver horas</button>
+         </div>
+         <span style="font-size:12px;color:var(--gris-texto)">${horasComp}</span>`;
     } else {
       acciones = `<span style="font-size:12px;color:var(--gris-texto)">—${horasComp}</span>`;
     }
@@ -1801,7 +1931,7 @@ async function guardarPDFEnFichaEmpleado(f, itemId, noEnlazar) {
 
 // Abre el selector de archivo, sube el justificante real (PDF/foto) a
 // Justificantes/{empleado}/ y, si tiene éxito, marca la ausencia como APROBADA.
-function subirJustificante(itemId, empleadoNombre) {
+function subirJustificante(itemId, empleadoNombre, revertirDescuento = false) {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.pdf,.jpg,.jpeg,.png,.heic';
@@ -1821,9 +1951,13 @@ function subirJustificante(itemId, empleadoNombre) {
       const resultado = await r.json();
       await graphPatch(
         `/sites/${siteId}/lists/Ausencias/items/${itemId}/fields`,
-        { JustificanteURL: resultado.webUrl, Estado: 'APROBADA' }
+        revertirDescuento
+          ? { JustificanteURL: resultado.webUrl, Estado: 'APROBADA', HorasCompensadas: 0 }
+          : { JustificanteURL: resultado.webUrl, Estado: 'APROBADA' }
       );
-      toast('✓ Justificante subido — ausencia aprobada del todo', 'ok');
+      toast(revertirDescuento
+        ? '✓ Justificante subido — horas devueltas y ausencia aprobada'
+        : '✓ Justificante subido — ausencia aprobada del todo', 'ok');
       await cargarAusencias();
     } catch(err) {
       toast('Error al subir justificante: ' + err.message, 'error');
