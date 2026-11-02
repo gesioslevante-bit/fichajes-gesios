@@ -2543,20 +2543,22 @@ async function cargarControlHoras() {
 
       // Compensaciones aprobadas (horas exactas)
       const horasComp = compPorEmp[nombre] || 0;
-      const horasExtraNetas = Math.max(0, horasExtraAnyo - horasComp);
+      // Puede quedar en negativo: es el saldo que el trabajador debe (descuentos por
+      // justificante sin extras que cubrirlos); las próximas extras lo van reduciendo.
+      const horasExtraNetas = horasExtraAnyo - horasComp;
 
       // Jornada esperada en el período
       const jornadaEsperada = jornadaDiaria * diasPeriodo;
 
       // Porcentajes para barras
       const pctOrdinaria = Math.min(100, (horasOrdinarias / jornadaEsperada) * 100) || 0;
-      const pctExtra = Math.min(100, (horasExtraNetas / limiteExtras) * 100) || 0;
+      const pctExtra = Math.min(100, (Math.max(0, horasExtraNetas) / limiteExtras) * 100) || 0;
       const pctExtraMes = Math.min(100, (horasExtra / (limiteExtras / 12)) * 100) || 0; // referencia: reparto mensual aproximado del cupo anual
       const pctAnual = Math.min(100, (horasOrdAnyo / horasAnualesContrato) * 100) || 0;
 
       const alertaExtras = horasExtraNetas >= 72; // aviso al 90%
       const alertaAnual = horasOrdAnyo >= horasAnualesContrato * 0.95;
-      const colorExtra = horasExtraNetas >= limiteExtras ? 'rojo' : horasExtraNetas >= limiteExtras * 0.75 ? 'naranja' : 'verde';
+      const colorExtra = horasExtraNetas < 0 ? 'naranja' : horasExtraNetas >= limiteExtras ? 'rojo' : horasExtraNetas >= limiteExtras * 0.75 ? 'naranja' : 'verde';
       const colorAnual = alertaAnual ? 'rojo' : 'verde';
 
       html += `
@@ -2601,7 +2603,7 @@ async function cargarControlHoras() {
             </div>
             <div class="horas-stat">
               <div class="horas-stat-val ${colorExtra}">${horasExtraNetas.toFixed(1)}h</div>
-              <div class="horas-stat-label">Extras netas año${horasComp > 0 ? ` <small style="color:#888;font-weight:400;">(${horasExtraAnyo.toFixed(1)}h brutas − ${horasComp.toFixed(1)}h comp.)</small>` : ''}</div>
+              <div class="horas-stat-label">Extras netas año${horasExtraNetas < 0 ? ` <small style="color:#c2410c;font-weight:600;">(debe ${Math.abs(horasExtraNetas).toFixed(1)}h)</small>` : ''}${horasComp > 0 ? ` <small style="color:#888;font-weight:400;">(${horasExtraAnyo.toFixed(1)}h brutas − ${horasComp.toFixed(1)}h comp.)</small>` : ''}</div>
             </div>
             <div class="horas-stat">
               <div class="horas-stat-val">${horasComp.toFixed(1)}h</div>
@@ -3029,7 +3031,7 @@ async function exportarPDF() {
     const totalHoras   = Object.values(totalesPorEmp).reduce((acc, t) => acc + t.horas, 0);
     const totalExtrasB = Object.values(totalesPorEmp).reduce((acc, t) => acc + t.extras, 0);
     const totalCompensadas = Object.values(compMap).reduce((a, b) => a + b, 0);
-    const extrasNetas = Math.max(0, totalExtrasB - totalCompensadas);
+    const extrasNetas = totalExtrasB - totalCompensadas; // negativo = saldo a deber
 
     // ── Resumen por empleado: tabla propia en página nueva ──
     doc.addPage();
@@ -3042,7 +3044,7 @@ async function exportarPDF() {
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([emp, t]) => {
         const comp = compMap[emp] || 0;
-        const netas = Math.max(0, t.extras - comp);
+        const netas = t.extras - comp; // negativo = saldo a deber
         return [emp, formatoHoras(t.horas), formatoHoras(t.extras), formatoHoras(comp), formatoHoras(netas)];
       });
     resumenBody.push([
