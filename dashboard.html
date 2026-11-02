@@ -2003,9 +2003,7 @@ async function exportarMesCSV() {
     const data = await graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=500&$filter=${filtro}`);
     const items = (data.value || []).sort((a,b) => a.fields.Timestamp.localeCompare(b.fields.Timestamp));
     const empData = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
-    let ausFiltroMes = `(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE') and fields/FechaInicio le '${hasta}' and fields/FechaFin ge '${desde}'`;
-    if (emp) ausFiltroMes += ` and fields/EmpleadoID eq '${emp}'`;
-    const ausDataMes = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=${ausFiltroMes}`);
+    const ausDataMes = { value: await cargarAusenciasInforme(desde, hasta, emp) };
     const csv = generarCSVFichajes(items, empData.value || [], ausDataMes.value || [], desde, hasta, emp);
     descargarCSV(csv, `fichajes_${mes}${emp ? '_' + emp.replace(/ /g,'_') : ''}.csv`);
     toast('✓ CSV descargado', 'ok');
@@ -2023,7 +2021,7 @@ async function exportarAnoCSV() {
     const data = await graphCall(`/sites/${siteId}/lists/Fichajes/items?$expand=fields&$top=2000&$filter=fields/Timestamp ge '${desde}' and fields/Timestamp le '${hasta}'`);
     const items = (data.value || []).sort((a,b) => a.fields.Timestamp.localeCompare(b.fields.Timestamp));
     const empData2 = await graphCall(`/sites/${siteId}/lists/Empleados/items?$expand=fields&$top=100`);
-    const ausDataAno = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=1000&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE') and fields/FechaInicio le '${hasta}' and fields/FechaFin ge '${desde}'`);
+    const ausDataAno = { value: await cargarAusenciasInforme(desde, hasta, null) };
     const csv = generarCSVFichajes(items, empData2.value || [], ausDataAno.value || [], desde, hasta, null);
     descargarCSV(csv, `fichajes_${anyo}.csv`);
     toast('✓ CSV anual descargado', 'ok');
@@ -2050,6 +2048,7 @@ async function exportarITSS() {
 
     const fichajes = (dataFich.value || []).sort((a,b) => a.fields.Timestamp.localeCompare(b.fields.Timestamp));
     const empleados = dataEmp.value || [];
+    const ausITSS = await cargarAusenciasInforme(desde + 'T00:00:00Z', hasta + 'T23:59:59Z', emp);
 
     // Formato ITSS: pares entrada-salida por jornada
     const empMap = {};
@@ -2069,6 +2068,22 @@ async function exportarITSS() {
       if (!jornadas[key]) jornadas[key] = { emp: campos.EmpleadoID, dia, entradas: [], salidas: [] };
       if (campos.TipoFichaje === 'ENTRADA') jornadas[key].entradas.push(campos.Timestamp);
       else jornadas[key].salidas.push(campos.Timestamp);
+    });
+
+    // Añadir los días de ausencia/baja (también las que siguen en curso, sin fecha fin)
+    // para que quien está de baja aparezca en el archivo aunque no haya fichado.
+    const iniD = new Date(desde + 'T00:00:00Z'), finD = new Date(hasta + 'T00:00:00Z');
+    ausITSS.forEach(a => {
+      const f = a.fields;
+      if (!f.EmpleadoID || !f.FechaInicio) return;
+      let cursor = new Date(Math.max(new Date(f.FechaInicio.slice(0,10) + 'T00:00:00Z'), iniD));
+      const fin = f.FechaFin ? new Date(Math.min(new Date(f.FechaFin.slice(0,10) + 'T00:00:00Z'), finD)) : finD;
+      while (cursor <= fin) {
+        const dia = cursor.toISOString().slice(0,10);
+        const key = f.EmpleadoID + '_' + dia;
+        if (!jornadas[key]) jornadas[key] = { emp: f.EmpleadoID, dia, entradas: [], salidas: [], ausencia: f.TipoAusencia };
+        cursor = new Date(cursor.getTime() + 86400000);
+      }
     });
 
     // Ordenar jornadas por empleado → mes → día
@@ -2132,7 +2147,10 @@ async function exportarITSS() {
         diasMes++;
       }
       const horasStr = horas > 0 ? horas.toFixed(2) : '—';
-      csv += `${empresa};${cif};${convenio};${j.emp};${nif};${j.dia};${entrada};${salida};${horasStr}\n`;
+      const soloAusencia = j.ausencia && !j.entradas.length;
+      const entradaTxt = soloAusencia ? `Ausencia: ${j.ausencia}` : entrada;
+      const salidaTxt  = soloAusencia ? '—' : salida;
+      csv += `${empresa};${cif};${convenio};${j.emp};${nif};${j.dia};${entradaTxt};${salidaTxt};${horasStr}\n`;
 
       // Si es el último registro, cerrar mes y empleado
       if (idx === jornadasOrdenadas.length - 1) {
@@ -2219,6 +2237,17 @@ function calcularHorasMes(fichajes) {
   return Math.round(totalMs / 3600000);
 }
 
+// Ausencias y bajas que afectan a un período, para los informes. Incluye las bajas
+// "en curso" (sin fecha fin), que una consulta con FechaFin las dejaría fuera, y las
+// ya descontadas por falta de justificante.
+async function cargarAusenciasInforme(desde, hasta, emp) {
+  let filtro = `(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE' or fields/Estado eq 'DESCONTADA') and fields/FechaInicio le '${hasta}'`;
+  if (emp) filtro += ` and fields/EmpleadoID eq '${emp}'`;
+  const r = await graphCall(`/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=999&$filter=${filtro}`);
+  const desdeMs = new Date(desde).getTime();
+  return (r.value || []).filter(a => !a.fields.FechaFin || new Date(a.fields.FechaFin).getTime() >= desdeMs);
+}
+
 function generarCSVFichajes(items, empleadosCache, ausencias, desde, hasta, empFiltro) {
   // Mapa de jornada por empleado
   const jornadaMap = {};
@@ -2244,7 +2273,7 @@ function generarCSVFichajes(items, empleadosCache, ausencias, desde, hasta, empF
   (ausencias || []).forEach(a => {
     const f = a.fields;
     let cursor = new Date(Math.max(new Date(f.FechaInicio), desdeD));
-    const fin = new Date(Math.min(new Date(f.FechaFin), hastaD));
+    const fin = f.FechaFin ? new Date(Math.min(new Date(f.FechaFin), hastaD)) : hastaD; // sin fecha fin = baja en curso
     while (cursor <= fin) {
       const diaStr = cursor.toISOString().slice(0,10);
       ausenciaPorDiaEmp[f.EmpleadoID + '_' + diaStr] = f.TipoAusencia;
@@ -2852,10 +2881,7 @@ async function exportarPDF() {
     (empleadosCache || []).forEach(e => { empMap[e.fields.Title] = e.fields; });
 
     // Cargar TODAS las ausencias aprobadas que se solapen con el período (para el informe día a día)
-    let urlAus = `/sites/${siteId}/lists/Ausencias/items?$expand=fields&$top=500&$filter=(fields/Estado eq 'APROBADA' or fields/Estado eq 'JUSTIFICANTE_PENDIENTE' or fields/Estado eq 'DESCONTADA') and fields/FechaInicio le '${hasta}T23:59:59Z' and fields/FechaFin ge '${desde}T00:00:00Z'`;
-    if (empFiltro) urlAus += ` and fields/EmpleadoID eq '${empFiltro}'`;
-    const respAus = await graphCall(urlAus);
-    const ausenciasPeriodo = respAus.value || [];
+    const ausenciasPeriodo = await cargarAusenciasInforme(`${desde}T00:00:00Z`, `${hasta}T23:59:59Z`, empFiltro);
 
     // Cargar horas compensadas aprobadas en el período + horas descontadas
     // por falta de justificante médico
@@ -2921,7 +2947,7 @@ async function exportarPDF() {
     ausenciasPeriodo.forEach(a => {
       const f = a.fields;
       let cursor = new Date(Math.max(new Date(f.FechaInicio), new Date(desde + 'T00:00:00Z')));
-      const fin = new Date(Math.min(new Date(f.FechaFin), new Date(hasta + 'T00:00:00Z')));
+      const fin = f.FechaFin ? new Date(Math.min(new Date(f.FechaFin), new Date(hasta + 'T00:00:00Z'))) : new Date(hasta + 'T00:00:00Z'); // sin fecha fin = baja en curso
       while (cursor <= fin) {
         const diaStr = cursor.toISOString().slice(0,10);
         ausenciaPorDiaEmp[f.EmpleadoID + '_' + diaStr] = f.TipoAusencia;
